@@ -1,0 +1,39 @@
+[package]
+name = "very-princess-contracts"
+version = "0.1.0"
+edition = "2021"
+description = "PayoutRegistry — multi-organization maintenance payout smart contract on Stellar Soroban."
+license = "MIT"
+
+# ── Build Target ──────────────────────────────────────────────────────────────
+# cdylib is required by Soroban — the contract is compiled to a WASM shared library.
+[lib]
+crate-type = ["cdylib"]
+
+# ── Runtime Dependencies ──────────────────────────────────────────────────────
+[dependencies]
+# Official Soroban SDK — Protocol 21 compatible.
+soroban-sdk = { version = "21.0.0" }
+
+# ── Dev/Test Dependencies ─────────────────────────────────────────────────────
+# The "testutils" feature unlocks Address::generate(), mock_all_auths(), etc.
+[dev-dependencies]
+soroban-sdk = { version = "21.0.0", features = ["testutils"] }
+
+# ── Release Profile ───────────────────────────────────────────────────────────
+# These settings minimise WASM binary size for on-chain deployment.
+[profile.release]
+opt-level      = "z"       # Optimise for binary size
+overflow-checks = true     # Keep checked arithmetic (security)
+debug           = 0
+strip           = "symbols"
+debug-assertions = false
+panic           = "abort"  # Minimal panic handler for WASM
+codegen-units   = 1        # Single codegen unit for maximum LTO benefit
+lto             = true
+
+# ── Release-with-logs Profile ─────────────────────────────────────────────────
+# Used during development/debugging — identical to release but with assertions enabled.
+[profile.release-with-logs]
+inherits         = "release"
+debug-assertions = true

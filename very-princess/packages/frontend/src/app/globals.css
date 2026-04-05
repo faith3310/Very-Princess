@@ -1,0 +1,84 @@
+/**
+ * Global CSS — imported by the root layout.
+ *
+ * Contains:
+ *  - Tailwind CSS directives
+ *  - CSS custom properties (design tokens)
+ *  - Base resets and typography defaults
+ */
+
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+/* ── Design Tokens ─────────────────────────────────────────────────────────── */
+:root {
+  /* Stellar brand colours as CSS variables for use outside Tailwind */
+  --color-stellar-blue:   #0A0E27;
+  --color-stellar-purple: #7B61FF;
+  --color-stellar-teal:   #00CDCC;
+  --color-stellar-light:  #E8ECF9;
+
+  /* Font variables (populated by next/font) */
+  --font-inter:           'Inter', system-ui, sans-serif;
+  --font-jetbrains-mono:  'JetBrains Mono', Menlo, monospace;
+}
+
+/* ── Base ───────────────────────────────────────────────────────────────────── */
+@layer base {
+  * {
+    @apply box-border;
+  }
+
+  html {
+    @apply scroll-smooth;
+  }
+
+  body {
+    @apply bg-stellar-blue text-white;
+    font-feature-settings: "cv02", "cv03", "cv04", "cv11";
+  }
+
+  /* Monospace addresses, hashes, amounts */
+  .font-mono {
+    font-family: var(--font-jetbrains-mono);
+  }
+
+  /* Focus ring — accessible and on-brand */
+  :focus-visible {
+    @apply outline-none ring-2 ring-stellar-purple ring-offset-2 ring-offset-stellar-blue;
+  }
+
+  /* Scrollbar styling for modern browsers */
+  ::-webkit-scrollbar {
+    width: 6px;
+    height: 6px;
+  }
+  ::-webkit-scrollbar-track {
+    @apply bg-transparent;
+  }
+  ::-webkit-scrollbar-thumb {
+    @apply rounded-full bg-white/10;
+  }
+  ::-webkit-scrollbar-thumb:hover {
+    @apply bg-white/20;
+  }
+}
+
+/* ── Components ─────────────────────────────────────────────────────────────── */
+@layer components {
+  /* Glassmorphism card — reused across the dashboard */
+  .glass-card {
+    @apply rounded-2xl border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm;
+  }
+
+  /* Gradient text utility */
+  .gradient-text {
+    @apply bg-gradient-to-r from-stellar-purple to-stellar-teal bg-clip-text text-transparent;
+  }
+
+  /* Status badge base */
+  .badge {
+    @apply inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium;
+  }
+}

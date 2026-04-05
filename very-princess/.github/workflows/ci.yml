@@ -1,0 +1,200 @@
+# ─────────────────────────────────────────────────────────────────────────────
+# CI — very-princess Continuous Integration Pipeline
+# ─────────────────────────────────────────────────────────────────────────────
+#
+# This workflow validates the entire very-princess monorepo on every push to
+# `main` and on every Pull Request targeting `main`.
+#
+# The pipeline is split into two parallel jobs that run concurrently:
+#
+#   ┌─────────────────────────────────────────────────────┐
+#   │  JOB 1: node                                        │
+#   │   • Sets up Node.js 20                              │
+#   │   • Installs all npm workspace dependencies         │
+#   │   • Runs lint across the monorepo via Turborepo     │
+#   │   • Builds packages/backend (Fastify / TypeScript)  │
+#   │   • Builds packages/frontend (Next.js)              │
+#   └─────────────────────────────────────────────────────┘
+#
+#   ┌─────────────────────────────────────────────────────┐
+#   │  JOB 2: contracts                                   │
+#   │   • Sets up Rust (pinned stable version)            │
+#   │   • Adds the wasm32-unknown-unknown compilation     │
+#   │     target required by Soroban                      │
+#   │   • Installs the Stellar CLI for `contract build`   │
+#   │   • Runs `cargo fmt --check` (formatting lint)      │
+#   │   • Runs `cargo clippy` (Rust-idiomatic lint)       │
+#   │   • Runs `cargo test` (unit tests)                  │
+#   │   • Builds the optimised release WASM artefact      │
+#   └─────────────────────────────────────────────────────┘
+#
+# Turborepo remote caching is intentionally disabled in CI to keep the
+# setup self-contained. Enable it by setting TURBO_TOKEN and TURBO_TEAM
+# as repository secrets if you want faster incremental builds.
+# ─────────────────────────────────────────────────────────────────────────────
+
+name: CI
+
+# ── Trigger Conditions ────────────────────────────────────────────────────────
+on:
+  push:
+    branches:
+      - main        # Run on every direct push to main (merges, hotfixes)
+  pull_request:
+    branches:
+      - main        # Run on every PR targeting main (code review gate)
+
+# ── Concurrency Guard ─────────────────────────────────────────────────────────
+# If a new run is triggered for the same branch/PR while one is already in
+# progress, cancel the older run to save CI minutes and reduce noise.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+# ── Pinned Tool Versions ──────────────────────────────────────────────────────
+# Pinning versions here (rather than in individual steps) makes upgrades a
+# single-line change and keeps all jobs in sync.
+env:
+  NODE_VERSION: "20"
+  RUST_VERSION: "1.78.0"
+  # stellar-cli version must match the soroban-sdk version used in Cargo.toml
+  # (currently soroban-sdk v21). Bump both together on SDK upgrades.
+  SOROBAN_CLI_VERSION: "21.0.0"
+
+# ─────────────────────────────────────────────────────────────────────────────
+# JOBS
+# ─────────────────────────────────────────────────────────────────────────────
+jobs:
+
+  # ── Job 1: TypeScript Packages (Backend + Frontend) ──────────────────────
+  # Validates the Fastify backend and Next.js frontend packages using
+  # Turborepo to take advantage of task-graph dependency ordering and
+  # build caching.
+  node:
+    name: "Node.js — Lint, Build & Type-check"
+    runs-on: ubuntu-latest
+
+    steps:
+      # 1. Check out the repository at the commit that triggered this run.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Install Node.js and enable the built-in npm dependency cache.
+      #    The cache key is derived from package-lock.json so a clean install
+      #    is only triggered when dependencies actually change.
+      - name: Setup Node.js ${{ env.NODE_VERSION }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ env.NODE_VERSION }}
+          cache: "npm"
+
+      # 3. Install all workspace dependencies using the lockfile exactly
+      #    (`npm ci` instead of `npm install`) to guarantee reproducibility.
+      - name: Install npm dependencies
+        run: npm ci
+
+      # 4. Lint — runs `eslint` across packages/backend and packages/frontend.
+      #    Turborepo parallelises this across both packages automatically.
+      #    A non-zero exit code fails the job and blocks merging.
+      - name: Lint (Turborepo)
+        run: npx turbo run lint
+
+      # 5. Build — compiles both the Fastify backend (tsc) and the Next.js
+      #    frontend (next build). Turborepo respects the `dependsOn` graph in
+      #    turbo.json so packages are built in the correct order.
+      #
+      #    The `--log-order=grouped` flag keeps output readable in GitHub's
+      #    log viewer even when tasks run in parallel.
+      - name: Build (Turborepo)
+        run: npx turbo run build --log-order=grouped
+        env:
+          # Silence Next.js telemetry in CI — no phone-home calls.
+          NEXT_TELEMETRY_DISABLED: "1"
+          # Populate required public env vars with safe CI placeholders.
+          # The build must succeed even without a live contract deployed.
+          NEXT_PUBLIC_CONTRACT_ID: "PLACEHOLDER_FOR_CI_BUILD"
+          NEXT_PUBLIC_RPC_URL: "https://soroban-testnet.stellar.org"
+          NEXT_PUBLIC_HORIZON_URL: "https://horizon-testnet.stellar.org"
+          NEXT_PUBLIC_NETWORK_PASSPHRASE: "Test SDF Network ; September 2015"
+
+  # ── Job 2: Soroban Smart Contracts (Rust) ────────────────────────────────
+  # Validates the PayoutRegistry smart contract written in Rust.
+  # This job runs in parallel with `node` — neither depends on the other.
+  contracts:
+    name: "Contracts — Fmt, Clippy, Test & Build"
+    runs-on: ubuntu-latest
+
+    # All steps in this job default to the contracts package directory so
+    # we don't have to repeat `working-directory` on every step.
+    defaults:
+      run:
+        working-directory: packages/contracts
+
+    steps:
+      # 1. Check out the repository.
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      # 2. Install the pinned Rust toolchain.
+      #    - `wasm32-unknown-unknown` is the compilation target required by
+      #      Soroban (contracts run inside a WASM VM on Stellar validators).
+      #    - `clippy` is Rust's idiomatic linter.
+      #    - `rustfmt` is the standard Rust formatter.
+      - name: Setup Rust toolchain ${{ env.RUST_VERSION }}
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: ${{ env.RUST_VERSION }}
+          targets: wasm32-unknown-unknown
+          components: clippy, rustfmt
+
+      # 3. Cache the Cargo registry, git dependencies, and the incremental
+      #    build artefacts. The cache key is tied to Cargo.lock so a full
+      #    re-download only happens when dependencies change.
+      - name: Cache Cargo registry and build artefacts
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+            packages/contracts/target
+          key: ${{ runner.os }}-cargo-${{ hashFiles('packages/contracts/Cargo.lock') }}
+          restore-keys: |
+            ${{ runner.os }}-cargo-
+
+      # 4. Install the Stellar CLI (which includes `stellar contract build`).
+      #    `--locked` ensures the exact dependency tree in the CLI's lockfile
+      #    is used, preventing surprise breakage from transitive updates.
+      #    `--features opt` enables the WASM optimisation passes (wasm-opt).
+      - name: Install Stellar CLI v${{ env.SOROBAN_CLI_VERSION }}
+        run: |
+          cargo install --locked stellar-cli \
+            --version ${{ env.SOROBAN_CLI_VERSION }} \
+            --features opt
+
+      # 5. Formatting lint — ensures all Rust source code has been passed
+      #    through `cargo fmt`. PRs with unformatted code are rejected here.
+      - name: Check Rust formatting (cargo fmt)
+        run: cargo fmt --check
+
+      # 6. Clippy lint — runs Rust's idiomatic linter targeting the Soroban
+      #    WASM target. `-D warnings` promotes every warning to a hard error,
+      #    enforcing zero-warning policy in CI.
+      - name: Run Clippy linter
+        run: cargo clippy --target wasm32-unknown-unknown -- -D warnings
+
+      # 7. Unit tests — runs the tests defined in lib.rs (those marked with
+      #    `#[test]` and the Soroban test harness). These run natively (not in
+      #    WASM) for fast feedback, which is standard Soroban practice.
+      #    RUSTFLAGS="-D warnings" keeps the zero-warning policy during tests.
+      - name: Run contract unit tests (cargo test)
+        run: cargo test
+        env:
+          RUSTFLAGS: "-D warnings"
+
+      # 8. Build the optimised release WASM artefact.
+      #    This is the final artefact that would be deployed to Stellar via
+      #    `stellar contract deploy`. Building it in CI catches any issues
+      #    that only appear at the release optimisation level (e.g., size
+      #    overflows, linker errors with wasm-opt).
+      - name: Build release WASM (stellar contract build)
+        run: stellar contract build --profile release
