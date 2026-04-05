@@ -135,7 +135,7 @@ export function FundOrgModal({ orgId, onClose, onSuccess }: FundOrgModalProps) {
               <p className="mt-1 text-sm text-white/50">
                 Deposit XLM into{" "}
                 <span className="font-mono text-stellar-purple">{orgId}</span>
-                's budget.
+                &apos;s budget.
               </p>
             </div>
 

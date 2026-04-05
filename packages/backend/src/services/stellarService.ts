@@ -239,7 +239,7 @@ export class StellarService {
       networkPassphrase: NETWORK_PASSPHRASE,
     })
       .addOperation(
-        // @ts-ignore — SDK types vary slightly
+        // @ts-expect-error — invokeContractFunction exists at runtime but is missing from SDK types
         xdr.Operation.invokeContractFunction({
           contractAddress: xdr.ScAddress.scAddressTypeContract(
             xdr.Hash.fromXDR(CONTRACT_ID, "hex")
@@ -257,8 +257,8 @@ export class StellarService {
       throw new Error(`Simulation failed: ${simResult.error}`);
     }
 
-    // @ts-ignore — returnVal is present on success
-    return simResult.result?.retval as xdr.ScVal;
+        // @ts-expect-error — retval is present on successful simulation results
+        return simResult.result?.retval as xdr.ScVal;
   }
 
   /**
@@ -277,8 +277,8 @@ export class StellarService {
       fee: BASE_FEE,
       networkPassphrase: NETWORK_PASSPHRASE,
     })
-      // @ts-ignore
       .addOperation(
+        // eslint-disable-next-line @typescript-eslint/no-explicit-any
         (xdr.Operation as any).invokeContractFunction({
           contractAddress: xdr.ScAddress.scAddressTypeContract(
             xdr.Hash.fromXDR(CONTRACT_ID, "hex")

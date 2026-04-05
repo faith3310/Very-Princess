@@ -34,6 +34,7 @@ const server = Fastify({
       process.env["NODE_ENV"] !== "production"
         ? { target: "pino-pretty", options: { colorize: true } }
         : undefined,
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
   } as any,
 });
 

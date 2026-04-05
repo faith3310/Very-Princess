@@ -1,0 +1,13 @@
+{
+    "root": true,
+    "extends": [
+        "next/core-web-vitals"
+    ],
+    "rules": {
+        "react/no-unescaped-entities": "warn"
+    },
+    "ignorePatterns": [
+        ".next/",
+        "node_modules/"
+    ]
+}

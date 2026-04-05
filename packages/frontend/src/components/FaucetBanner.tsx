@@ -152,7 +152,7 @@ function TooltipContent() {
           </p>
           <p className="text-[10px] leading-relaxed text-white/35">
             Open Freighter → switch to <strong className="text-white/50">Testnet</strong> → tap{" "}
-            <strong className="text-white/50">"Fund Account"</strong> under your balance.
+            <strong className="text-white/50">&quot;Fund Account&quot;</strong> under your balance.
           </p>
         </div>
       </div>
