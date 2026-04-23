@@ -153,9 +153,15 @@ export const contractRoutes: FastifyPluginAsync = async (fastify) => {
    * POST /orgs/:orgId/fund
    * Fund an organization's budget via SAC token transfer.
    */
-  fastify.post<{ Params: { orgId: string } }>(
-    "/orgs/:orgId/fund",
-    {
+fastify.post<{ Params: { orgId: string } }>(
+  "/orgs/:orgId/fund",
+  {
+    config: {
+      rateLimit: {
+        max: 5,
+        timeWindow: "1 minute",
+      },
+    },
       schema: {
         // description: "Fund an organization's budget using public Stellar Asset transfers.",
         // tags: ["Organizations", "Funding"],
@@ -234,9 +240,15 @@ export const contractRoutes: FastifyPluginAsync = async (fastify) => {
    * POST /api/v1/contract/payouts
    * Body: { orgId, maintainerAddress, amountStroops, signerSecret }
    */
-  fastify.post(
-    "/payouts",
-    {
+fastify.post(
+  "/payouts",
+  {
+    config: {
+      rateLimit: {
+        max: 5,
+        timeWindow: "1 minute",
+      },
+    },
       schema: {
         // description: "Allocate a payout to a maintainer (org admin only).",
         // tags: ["Payouts"],

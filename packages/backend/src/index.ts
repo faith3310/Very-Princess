@@ -24,6 +24,7 @@ import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import { SERVER_HOST, SERVER_PORT } from "./config/env.js";
 import { contractRoutes } from "./routes/contract.js";
+import rateLimit from "@fastify/rate-limit";
 
 // ─── Server Setup ─────────────────────────────────────────────────────────────
 
@@ -43,6 +44,23 @@ const server = Fastify({
 // Security headers — important even for internal APIs.
 await server.register(helmet, {
   contentSecurityPolicy: false, // relaxed for development; tighten for production
+});
+
+await server.register(rateLimit, {
+  global: true,
+  max: 100,
+  timeWindow: "1 minute",
+  addHeaders: {
+    "x-ratelimit-limit": true,
+    "x-ratelimit-remaining": true,
+    "x-ratelimit-reset": true,
+    "retry-after": true,
+  },
+  errorResponseBuilder: (_req, context) => ({
+    statusCode: 429,
+    error: "Too Many Requests",
+    message: `Rate limit exceeded. Retry after ${context.after}.`,
+  }),
 });
 
 // CORS — allows the Next.js frontend (port 3000) to call this API.
