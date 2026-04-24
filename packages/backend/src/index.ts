@@ -63,6 +63,9 @@ await server.register(errorHandler);
 // The v1 prefix supports future API versioning without breaking changes.
 await server.register(contractRoutes, { prefix: "/api/v1/contract" });
 
+// Analytics routes (leaderboard, etc.)
+await server.register(analyticsRoutes, { prefix: "/api/v1/analytics" });
+
 // Health check — used by CI, load balancers, and monitoring.
 server.get("/health", async () => ({
   status: "ok",
