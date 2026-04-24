@@ -1,19 +1,6 @@
 /**
  * @file dashboard/page.tsx
  * @description PayoutRegistry dashboard.
- *
- * The dashboard is a Client Component because it:
- *  - Reads Freighter wallet state (useFreighter hook)
- *  - Fetches live contract data via Soroban RPC simulation
- *  - Manages local state for org lookup, maintainer list, and balances
- *
- * ## Data Flow
- *
- * 1. User connects Freighter → `publicKey` is available.
- * 2. User enters an org ID → `readOrganization()` + `readMaintainers()` called.
- * 3. For each maintainer → `readClaimableBalance()` called.
- * 4. PayoutCard renders each balance; claim button calls `claim_payout`
- *    via Freighter signing (planned contribution — see PayoutCard.tsx).
  */
 
 "use client";
@@ -110,8 +97,6 @@ function DashboardPageInner() {
     }
   };
 
-  // ── Render ────────────────────────────────────────────────────────────────
-
   return (
     <div className="flex min-h-screen flex-col">
       {/* ── Navigation ── */}
@@ -176,14 +161,19 @@ function DashboardPageInner() {
                   Look up an organization to view maintainer balances.
                 </p>
               </div>
-              {publicKey && (
-                <div className="hidden items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 sm:flex">
-                  <span className="h-2 w-2 rounded-full bg-green-400 shadow-[0_0_6px_2px_rgba(74,222,128,0.4)]" />
-                  <span className="font-mono text-xs text-white/60">
-                    {publicKey.slice(0, 6)}...{publicKey.slice(-6)}
-                  </span>
-                </div>
-              )}
+              <div className="flex items-center gap-4">
+                <Link href="/organizations" className="text-sm text-stellar-teal hover:underline transition-all">
+                  Browse Organizations →
+                </Link>
+                {publicKey && (
+                  <div className="hidden items-center gap-2 rounded-lg border border-white/[0.08] bg-white/[0.04] px-3 py-2 sm:flex">
+                    <span className="h-2 w-2 rounded-full bg-green-400 shadow-[0_0_6px_2px_rgba(74,222,128,0.4)]" />
+                    <span className="font-mono text-xs text-white/60">
+                      {publicKey.slice(0, 6)}...{publicKey.slice(-6)}
+                    </span>
+                  </div>
+                )}
+              </div>
             </div>
 
             {/* ── Org Lookup Form ── */}
@@ -204,14 +194,11 @@ function DashboardPageInner() {
                   placeholder="e.g. stellar (max 9 chars)"
                   maxLength={9}
                   className="flex-1 rounded-lg border border-white/[0.12] bg-white/[0.06] px-4 py-2.5 font-mono text-sm text-white placeholder-white/30 outline-none transition-all focus:border-stellar-purple/60 focus:bg-white/[0.08] focus:ring-1 focus:ring-stellar-purple/30"
-                  aria-describedby="org-id-hint"
                 />
                 <button
-                  id="lookup-org-btn"
                   onClick={() => void handleLookupOrg()}
                   disabled={isLoading || !orgIdInput.trim()}
                   className="rounded-lg bg-gradient-to-r from-stellar-purple to-brand-500 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-stellar-purple/20 transition-all duration-200 hover:brightness-110 disabled:cursor-not-allowed disabled:opacity-50"
-                  aria-label="Look up organization"
                 >
                   {isLoading ? "Loading..." : "Lookup"}
                 </button>
@@ -224,11 +211,8 @@ function DashboardPageInner() {
 
             {/* ── Error ── */}
             {error && (
-              <div
-                role="alert"
-                className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400"
-              >
-                <strong>Error:</strong> {error}
+              <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
+                {error}
               </div>
             )}
 
@@ -236,7 +220,7 @@ function DashboardPageInner() {
             {organization && (
               <div className="glass-card mb-8 p-6">
                 <div className="mb-4 flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-stellar-purple to-stellar-teal font-bold text-white shadow-md shadow-stellar-purple/30">
+                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-stellar-purple to-stellar-teal font-bold text-white">
                     {organization.name.charAt(0).toUpperCase()}
                   </div>
                   <div>
@@ -258,7 +242,7 @@ function DashboardPageInner() {
                 </div>
 
                 {orgBudget && (
-                  <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-stellar-teal/20 bg-stellar-teal/5 p-4 transition-all hover:bg-stellar-teal/10">
+                  <div className="mt-4 flex items-center justify-between rounded-xl border border-stellar-teal/20 bg-stellar-teal/5 p-4">
                     <div>
                       <p className="text-xs font-medium uppercase tracking-wider text-stellar-teal/80">
                         Available Budget
@@ -274,9 +258,9 @@ function DashboardPageInner() {
                     </div>
                     <button
                       onClick={() => setShowFundModal(true)}
-                      className="rounded-lg bg-white/10 px-5 py-2.5 text-sm font-semibold text-white transition-all duration-200 hover:bg-stellar-teal hover:border-transparent hover:shadow-lg hover:shadow-stellar-teal/20"
+                      className="rounded-lg bg-white/10 px-5 py-2.5 text-sm font-semibold text-white hover:bg-stellar-teal transition-all"
                     >
-                      + Fund Org
+                      Fund Org
                     </button>
                   </div>
                 )}
@@ -318,10 +302,10 @@ function DashboardPageInner() {
         )}
       </main>
 
-      {/* ── Modals ── */}
       {showFundModal && organization && (
         <FundOrgModal
           orgId={organization.id}
+          orgName={organization.name}
           onClose={() => setShowFundModal(false)}
           onSuccess={() => {
             setShowFundModal(false);

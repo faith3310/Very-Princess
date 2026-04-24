@@ -24,6 +24,7 @@ import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import { SERVER_HOST, SERVER_PORT } from "./config/env.js";
 import { contractRoutes } from "./routes/contract.js";
+import { errorHandler } from "./plugins/errorHandler.js";
 
 // ─── Server Setup ─────────────────────────────────────────────────────────────
 
@@ -54,11 +55,16 @@ await server.register(cors, {
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 });
 
+await server.register(errorHandler);
+
 // ─── Route Registration ───────────────────────────────────────────────────────
 
 // All contract-related routes are mounted under /api/v1/contract.
 // The v1 prefix supports future API versioning without breaking changes.
 await server.register(contractRoutes, { prefix: "/api/v1/contract" });
+
+// Analytics routes (leaderboard, etc.)
+await server.register(analyticsRoutes, { prefix: "/api/v1/analytics" });
 
 // Health check — used by CI, load balancers, and monitoring.
 server.get("/health", async () => ({
