@@ -30,16 +30,29 @@ const jetbrainsMono = JetBrains_Mono({
 // ── SEO Metadata ──────────────────────────────────────────────────────────────
 
 export const metadata: Metadata = {
+  metadataBase: new URL(
+    process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000"
+  ),
   title: {
     template: "%s | very-princess",
     default: "very-princess — Stellar Payout Registry",
   },
   description:
-    "A decentralised multi-organization maintenance payout registry built on Stellar Soroban. Transparently track and claim contributor payouts on-chain.",
+    "A decentralized multi-organization payout registry built on Stellar Soroban. Track and claim contributor payouts transparently on-chain.",
   keywords: ["Stellar", "Soroban", "DeFi", "Open Source", "Drips", "Payouts"],
   openGraph: {
     siteName: "very-princess",
+    title: "very-princess — Stellar Payout Registry",
+    description:
+      "A decentralized multi-organization payout registry built on Stellar Soroban. Track and claim contributor payouts transparently on-chain.",
     type: "website",
+    locale: "en_US",
+  },
+  twitter: {
+    card: "summary_large_image",
+    title: "very-princess — Stellar Payout Registry",
+    description:
+      "A decentralized multi-organization payout registry built on Stellar Soroban. Track and claim contributor payouts transparently on-chain.",
   },
 };
 

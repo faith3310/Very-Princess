@@ -18,26 +18,28 @@
 
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { WalletButton } from "@/components/WalletButton";
 import { PayoutCard } from "@/components/PayoutCard";
 import { FundOrgModal } from "@/components/FundOrgModal";
 import { useFreighter } from "@/hooks/useFreighter";
-import { 
-  readOrganization, 
-  readMaintainers, 
-  readClaimableBalance, 
-  readOrgBudget, 
-  buildClaimPayoutTransaction, 
-  submitSignedTransaction 
+import {
+  readOrganization,
+  readMaintainers,
+  readClaimableBalance,
+  readOrgBudget,
+  buildClaimPayoutTransaction,
+  submitSignedTransaction,
 } from "@/lib/sorobanClient";
 import type { Organization, MaintainerBalance } from "@/lib/contractTypes";
 
-// ── Dashboard Page ────────────────────────────────────────────────────────────
+// ── Inner Component (uses useSearchParams) ────────────────────────────────────
 
-export default function DashboardPage() {
+function DashboardPageInner() {
   const { isConnected, publicKey, isInitialized, signTransaction } = useFreighter();
+  const searchParams = useSearchParams();
 
   // ── State ─────────────────────────────────────────────────────────────────
   const [orgIdInput, setOrgIdInput] = useState("");
@@ -52,8 +54,9 @@ export default function DashboardPage() {
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   /** Fetch org data, budget, and all maintainer balances from Soroban RPC. */
-  const handleLookupOrg = async () => {
-    if (!orgIdInput.trim()) return;
+  const handleLookupOrg = async (idOverride?: string) => {
+    const id = (idOverride ?? orgIdInput).trim();
+    if (!id) return;
     setIsLoading(true);
     setError(null);
     setOrganization(null);
@@ -61,16 +64,14 @@ export default function DashboardPage() {
     setOrgBudget(null);
 
     try {
-      // Parallel: read org info, budget, and maintainer list simultaneously.
       const [org, budget, maintainerAddresses] = await Promise.all([
-        readOrganization(orgIdInput.trim()),
-        readOrgBudget(orgIdInput.trim()),
-        readMaintainers(orgIdInput.trim()),
+        readOrganization(id),
+        readOrgBudget(id),
+        readMaintainers(id),
       ]);
       setOrganization(org);
       setOrgBudget(budget);
 
-      // Fetch each maintainer's balance (parallel).
       const balanceResults = await Promise.all(
         maintainerAddresses.map((addr) => readClaimableBalance(addr))
       );
@@ -83,6 +84,16 @@ export default function DashboardPage() {
     }
   };
 
+  /** Auto-lookup when ?org= param is present in the URL. */
+  useEffect(() => {
+    const orgFromUrl = searchParams.get("org");
+    if (orgFromUrl) {
+      setOrgIdInput(orgFromUrl);
+      void handleLookupOrg(orgFromUrl);
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
   /** Prepare, sign, and submit the claim_payout transaction. */
   const handleClaim = async (address: string) => {
     if (!isConnected || !publicKey) return;
@@ -91,8 +102,6 @@ export default function DashboardPage() {
       const unsignedXdr = await buildClaimPayoutTransaction(address);
       const signedXdr = await signTransaction(unsignedXdr);
       await submitSignedTransaction(signedXdr);
-      
-      // Refresh the balances after claim is confirmed
       void handleLookupOrg();
     } catch (err) {
       alert(err instanceof Error ? err.message : "Claim failed");
@@ -107,11 +116,28 @@ export default function DashboardPage() {
     <div className="flex min-h-screen flex-col">
       {/* ── Navigation ── */}
       <header className="sticky top-0 z-50 border-b border-white/[0.06] bg-stellar-blue/80 backdrop-blur-xl">
-        <nav className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4" aria-label="Dashboard navigation">
+        <nav
+          className="mx-auto flex max-w-6xl items-center justify-between px-6 py-4"
+          aria-label="Dashboard navigation"
+        >
           <div className="flex items-center gap-4">
-            <Link href="/" className="flex items-center gap-2 text-white/60 transition-colors hover:text-white" aria-label="Back to home">
-              <svg className="h-4 w-4" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={2}>
-                <path strokeLinecap="round" strokeLinejoin="round" d="M15 19l-7-7 7-7" />
+            <Link
+              href="/"
+              className="flex items-center gap-2 text-white/60 transition-colors hover:text-white"
+              aria-label="Back to home"
+            >
+              <svg
+                className="h-4 w-4"
+                fill="none"
+                viewBox="0 0 24 24"
+                stroke="currentColor"
+                strokeWidth={2}
+              >
+                <path
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  d="M15 19l-7-7 7-7"
+                />
               </svg>
               Home
             </Link>
@@ -123,13 +149,15 @@ export default function DashboardPage() {
       </header>
 
       <main className="mx-auto w-full max-w-6xl flex-1 px-6 py-10">
-        {/* ── Wallet Guard ─────────────────────────────────────────────── */}
+        {/* ── Wallet Guard ── */}
         {isInitialized && !isConnected ? (
           <div className="flex flex-col items-center justify-center py-32 text-center">
             <div className="mb-6 flex h-16 w-16 items-center justify-center rounded-2xl border border-stellar-purple/30 bg-stellar-purple/10">
               <LockIcon />
             </div>
-            <h2 className="mb-2 text-xl font-semibold text-white">Connect Your Wallet</h2>
+            <h2 className="mb-2 text-xl font-semibold text-white">
+              Connect Your Wallet
+            </h2>
             <p className="mb-8 max-w-sm text-sm text-white/50">
               Connect your Freighter wallet to interact with the PayoutRegistry
               on Stellar Testnet.
@@ -138,10 +166,12 @@ export default function DashboardPage() {
           </div>
         ) : (
           <>
-            {/* ── Connected State ─────────────────────────────────────── */}
+            {/* ── Connected State ── */}
             <div className="mb-8 flex items-center justify-between">
               <div>
-                <h2 className="text-2xl font-bold text-white">PayoutRegistry</h2>
+                <h2 className="text-2xl font-bold text-white">
+                  PayoutRegistry
+                </h2>
                 <p className="mt-1 text-sm text-white/50">
                   Look up an organization to view maintainer balances.
                 </p>
@@ -156,7 +186,7 @@ export default function DashboardPage() {
               )}
             </div>
 
-            {/* ── Org Lookup Form ─────────────────────────────────────── */}
+            {/* ── Org Lookup Form ── */}
             <div className="glass-card mb-8 p-6">
               <label
                 htmlFor="org-id-input"
@@ -187,11 +217,12 @@ export default function DashboardPage() {
                 </button>
               </div>
               <p id="org-id-hint" className="mt-2 text-xs text-white/30">
-                Enter the Symbol ID used when registering the organization on-chain.
+                Enter the Symbol ID used when registering the organization
+                on-chain.
               </p>
             </div>
 
-            {/* ── Error ───────────────────────────────────────────────── */}
+            {/* ── Error ── */}
             {error && (
               <div
                 role="alert"
@@ -201,7 +232,7 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* ── Org Info ─────────────────────────────────────────────── */}
+            {/* ── Org Info ── */}
             {organization && (
               <div className="glass-card mb-8 p-6">
                 <div className="mb-4 flex items-center gap-3">
@@ -209,18 +240,23 @@ export default function DashboardPage() {
                     {organization.name.charAt(0).toUpperCase()}
                   </div>
                   <div>
-                    <h3 className="font-semibold text-white">{organization.name}</h3>
-                    <p className="font-mono text-xs text-white/40">ID: {organization.id}</p>
+                    <h3 className="font-semibold text-white">
+                      {organization.name}
+                    </h3>
+                    <p className="font-mono text-xs text-white/40">
+                      ID: {organization.id}
+                    </p>
                   </div>
                 </div>
                 <div className="rounded-lg border border-white/[0.06] bg-black/20 px-4 py-3">
-                  <p className="text-xs font-medium text-white/40">Admin Address</p>
+                  <p className="text-xs font-medium text-white/40">
+                    Admin Address
+                  </p>
                   <p className="mt-1 break-all font-mono text-sm text-white/70">
                     {organization.admin}
                   </p>
                 </div>
 
-                {/* ── Budget Overview ── */}
                 {orgBudget && (
                   <div className="mt-4 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between rounded-xl border border-stellar-teal/20 bg-stellar-teal/5 p-4 transition-all hover:bg-stellar-teal/10">
                     <div>
@@ -228,8 +264,12 @@ export default function DashboardPage() {
                         Available Budget
                       </p>
                       <div className="mt-1 flex items-baseline gap-2">
-                        <span className="text-2xl font-bold tracking-tight text-white">{orgBudget.xlm}</span>
-                        <span className="text-sm font-medium text-stellar-teal">XLM</span>
+                        <span className="text-2xl font-bold tracking-tight text-white">
+                          {orgBudget.xlm}
+                        </span>
+                        <span className="text-sm font-medium text-stellar-teal">
+                          XLM
+                        </span>
                       </div>
                     </div>
                     <button
@@ -243,7 +283,7 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* ── Maintainer Balances ───────────────────────────────────── */}
+            {/* ── Maintainer Balances ── */}
             {balances.length > 0 && (
               <div>
                 <h3 className="mb-4 text-sm font-semibold uppercase tracking-widest text-white/40">
@@ -262,12 +302,14 @@ export default function DashboardPage() {
               </div>
             )}
 
-            {/* ── Empty State ───────────────────────────────────────────── */}
+            {/* ── Empty State ── */}
             {organization && balances.length === 0 && !isLoading && (
               <div className="rounded-2xl border border-dashed border-white/10 p-12 text-center">
                 <p className="text-sm text-white/40">
                   No maintainers registered for{" "}
-                  <span className="font-mono text-white/60">{organization.id}</span>{" "}
+                  <span className="font-mono text-white/60">
+                    {organization.id}
+                  </span>{" "}
                   yet.
                 </p>
               </div>
@@ -291,10 +333,32 @@ export default function DashboardPage() {
   );
 }
 
+// ── Root Export (Suspense boundary required for useSearchParams) ──────────────
+
+export default function DashboardPage() {
+  return (
+    <Suspense fallback={null}>
+      <DashboardPageInner />
+    </Suspense>
+  );
+}
+
+// ── Icons ─────────────────────────────────────────────────────────────────────
+
 function LockIcon() {
   return (
-    <svg className="h-7 w-7 text-stellar-purple" fill="none" viewBox="0 0 24 24" stroke="currentColor" strokeWidth={1.5}>
-      <path strokeLinecap="round" strokeLinejoin="round" d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z" />
+    <svg
+      className="h-7 w-7 text-stellar-purple"
+      fill="none"
+      viewBox="0 0 24 24"
+      stroke="currentColor"
+      strokeWidth={1.5}
+    >
+      <path
+        strokeLinecap="round"
+        strokeLinejoin="round"
+        d="M16.5 10.5V6.75a4.5 4.5 0 10-9 0v3.75m-.75 11.25h10.5a2.25 2.25 0 002.25-2.25v-6.75a2.25 2.25 0 00-2.25-2.25H6.75a2.25 2.25 0 00-2.25 2.25v6.75a2.25 2.25 0 002.25 2.25z"
+      />
     </svg>
   );
 }
