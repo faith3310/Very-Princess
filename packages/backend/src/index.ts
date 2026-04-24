@@ -48,6 +48,23 @@ await server.register(helmet, {
   contentSecurityPolicy: false, // relaxed for development; tighten for production
 });
 
+await server.register(rateLimit, {
+  global: true,
+  max: 100,
+  timeWindow: "1 minute",
+  addHeaders: {
+    "x-ratelimit-limit": true,
+    "x-ratelimit-remaining": true,
+    "x-ratelimit-reset": true,
+    "retry-after": true,
+  },
+  errorResponseBuilder: (_req, context) => ({
+    statusCode: 429,
+    error: "Too Many Requests",
+    message: `Rate limit exceeded. Retry after ${context.after}.`,
+  }),
+});
+
 // CORS — allows the Next.js frontend (port 3000) to call this API.
 await server.register(cors, {
   origin:
