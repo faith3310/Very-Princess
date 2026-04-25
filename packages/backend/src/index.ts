@@ -20,10 +20,20 @@
  */
 
 import Fastify from "fastify";
+import { profileRoutes } from "./routes/profile.js";
+
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import { SERVER_HOST, SERVER_PORT } from "./config/env.js";
 import { contractRoutes } from "./routes/contract.js";
+import rateLimit from "@fastify/rate-limit";
+import { errorHandler } from "./plugins/errorHandler.js";
+import { statsRoutes } from "./routes/stats.js";
+import { tokenRoutes } from "./routes/token.js";
+import { eventsRoutes } from "./routes/events.js";
+import { organizationRoutes } from "./routes/organization.js";
+import { authRoutes } from "./routes/auth.js";
+import { indexerService } from "./services/indexerService.js";
 
 // ─── Server Setup ─────────────────────────────────────────────────────────────
 
@@ -45,6 +55,23 @@ await server.register(helmet, {
   contentSecurityPolicy: false, // relaxed for development; tighten for production
 });
 
+await server.register(rateLimit, {
+  global: true,
+  max: 100,
+  timeWindow: "1 minute",
+  addHeaders: {
+    "x-ratelimit-limit": true,
+    "x-ratelimit-remaining": true,
+    "x-ratelimit-reset": true,
+    "retry-after": true,
+  },
+  errorResponseBuilder: (_req, context) => ({
+    statusCode: 429,
+    error: "Too Many Requests",
+    message: `Rate limit exceeded. Retry after ${context.after}.`,
+  }),
+});
+
 // CORS — allows the Next.js frontend (port 3000) to call this API.
 await server.register(cors, {
   origin:
@@ -54,11 +81,20 @@ await server.register(cors, {
   methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
 });
 
+await server.register(errorHandler);
+
 // ─── Route Registration ───────────────────────────────────────────────────────
 
 // All contract-related routes are mounted under /api/v1/contract.
 // The v1 prefix supports future API versioning without breaking changes.
 await server.register(contractRoutes, { prefix: "/api/v1/contract" });
+await server.register(profileRoutes, { prefix: "/api/v1/profile" });
+await server.register(tokenRoutes, { prefix: "/api/v1/tokens" });
+await server.register(authRoutes, { prefix: "/api/v1/auth" });
+
+await server.register(statsRoutes, { prefix: "/api/stats" });
+await server.register(eventsRoutes, { prefix: "/api/events" });
+await server.register(organizationRoutes, { prefix: "/api/org" });
 
 // Health check — used by CI, load balancers, and monitoring.
 server.get("/health", async () => ({
@@ -67,6 +103,17 @@ server.get("/health", async () => ({
   timestamp: new Date().toISOString(),
 }));
 
+// Indexer status endpoint
+server.get("/indexer/status", async () => {
+  return indexerService.getStatus();
+});
+
+// Manual sync trigger endpoint (for testing/admin)
+server.post("/indexer/sync", async () => {
+  await indexerService.triggerSync();
+  return { message: "Sync triggered" };
+});
+
 // ─── Start ───────────────────────────────────────────────────────────────────
 
 try {
@@ -74,6 +121,23 @@ try {
   server.log.info(
     `very-princess backend listening on http://${SERVER_HOST}:${SERVER_PORT}`
   );
+  
+  // Start the background indexer service
+  indexerService.start();
+  
+  // Graceful shutdown
+  const gracefulShutdown = (signal: string) => {
+    server.log.info(`Received ${signal}, shutting down gracefully...`);
+    indexerService.stop();
+    server.close(() => {
+      server.log.info('Server closed');
+      process.exit(0);
+    });
+  };
+  
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'));
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'));
+  
 } catch (err) {
   server.log.error(err);
   process.exit(1);

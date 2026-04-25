@@ -1,7 +1,7 @@
 #![no_std]
 
 use soroban_sdk::{
-    contract, contractimpl, contracttype, symbol_short, token, Address, Env, String, Symbol, Vec,
+    contract, contractimpl, contracttype, symbol_short, token, Address, BytesN, Env, IntoVal, String, Symbol, Vec,
 };
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -32,6 +32,20 @@ pub struct PayoutParams {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MaintainerPayout {
+    pub amount: i128,
+    pub unlock_timestamp: u64,
+}
+
+#[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub enum ProtocolState {
+    Active,
+    Paused,
+}
+
+#[contracttype]
 pub enum DataKey {
     /// The global Stellar Asset Contract address configured during initialization.
     Token,
@@ -42,6 +56,10 @@ pub enum DataKey {
     MaintainerBalance(Address),
     /// Total budget currently held by this org (in stroops).
     OrgBudget(Symbol),
+    /// Protocol admin address for contract upgrades and emergency functions.
+    ProtocolAdmin,
+    /// Current protocol state (Active or Paused).
+    ProtocolState,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -62,6 +80,13 @@ impl PayoutRegistry {
             panic!("already initialized");
         }
         env.storage().persistent().set(&DataKey::Token, &token);
+        env.storage().persistent().set(&DataKey::ProtocolAdmin, &protocol_admin);
+        env.storage().persistent().set(&DataKey::ProtocolState, &ProtocolState::Active);
+        
+        env.events().publish(
+            (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "Initialized")),
+            (token, protocol_admin),
+        );
     }
 
     pub fn get_token(env: Env) -> Address {
@@ -71,12 +96,53 @@ impl PayoutRegistry {
             .expect("contract not initialized")
     }
 
+    /// Retrieve the protocol admin address.
+    ///
+    /// # Panics
+    /// If the contract has not been initialized.
+    pub fn get_protocol_admin(env: Env) -> Address {
+        env.storage()
+            .persistent()
+            .get(&DataKey::ProtocolAdmin)
+            .expect("contract not initialized")
+    }
+
+    /// Retrieve the current protocol state.
+    ///
+    /// # Panics
+    /// If the contract has not been initialized.
+    pub fn get_protocol_state(env: Env) -> ProtocolState {
+        env.storage()
+            .persistent()
+            .get(&DataKey::ProtocolState)
+            .expect("contract not initialized")
+    }
+
+    /// Assert that the protocol is currently active.
+    /// 
+    /// # Panics
+    /// If the protocol is paused.
+    fn assert_active(env: &Env) {
+        let state = Self::get_protocol_state(env.clone());
+        match state {
+            ProtocolState::Active => {}, // Continue normally
+            ProtocolState::Paused => panic!("protocol is paused"),
+        }
+    }
+
     // ─────────────────────────────────────────────────────────────────────────
     // Organisation Management & Funding
     // ─────────────────────────────────────────────────────────────────────────
 
-    pub fn register_org(env: Env, id: Symbol, name: String, admin: Address) {
+    pub fn register_org(env: Env, admin: Address, name: String) -> BytesN<32> {
         admin.require_auth();
+
+        // Generate a deterministic ID based on admin address and name
+        let mut combined_data = Vec::new(&env);
+        combined_data.push_back(admin.clone());
+        combined_data.push_back(name.clone());
+        let id_bytes = env.crypto().sha256(&combined_data);
+        let id = Symbol::new(&env, &id_bytes);
 
         let org_key = DataKey::Organization(id.clone());
 
@@ -104,8 +170,12 @@ impl PayoutRegistry {
             .persistent()
             .set(&DataKey::OrgBudget(id.clone()), &0_i128);
 
-        env.events()
-            .publish((symbol_short!("registry"), symbol_short!("org_added")), id);
+        env.events().publish(
+            (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "org_registered")),
+            (id.clone(), admin.clone()),
+        );
+
+        id_bytes
     }
 
     pub fn get_org(env: Env, id: Symbol) -> Organization {
@@ -116,7 +186,10 @@ impl PayoutRegistry {
     }
 
     pub fn fund_org(env: Env, org_id: Symbol, from: Address, amount: i128) {
-        from.require_auth();
+        Self::assert_active(&env);
+        
+        // Strict authorization: bind the signature to the exact parameters
+        from.require_auth_for_args((org_id.clone(), from.clone(), amount).into_val(&env));
 
         if amount <= 0 {
             panic!("amount must be positive");
@@ -137,14 +210,15 @@ impl PayoutRegistry {
 
         let budget_key = DataKey::OrgBudget(org_id.clone());
         let current_budget: i128 = env.storage().persistent().get(&budget_key).unwrap_or(0);
+        let new_budget = current_budget.checked_add(amount).expect("budget overflow");
         env.storage()
             .persistent()
-            .set(&budget_key, &(current_budget + amount));
+            .set(&budget_key, &new_budget);
 
         env.events().publish(
-            (symbol_short!("registry"), symbol_short!("funded")),
-            (org_id, from, amount),
-        );
+    (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "OrgFunded")),
+    (org_id, from, amount),
+);
     }
 
     pub fn get_org_budget(env: Env, id: Symbol) -> i128 {
@@ -180,7 +254,7 @@ impl PayoutRegistry {
 
         env.storage()
             .persistent()
-            .set(&DataKey::MaintainerBalance(maintainer.clone()), &0_i128);
+            .set(&DataKey::MaintainerBalance(maintainer.clone()), &MaintainerPayout { amount: 0, unlock_timestamp: 0 });
 
         let maintainer_list_key = DataKey::OrgMaintainers(org_id.clone());
         let mut maintainers: Vec<Address> = env
@@ -194,9 +268,9 @@ impl PayoutRegistry {
             .set(&maintainer_list_key, &maintainers);
 
         env.events().publish(
-            (symbol_short!("registry"), symbol_short!("mnt_added")),
-            (org_id, maintainer),
-        );
+    (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "MaintainerAdded")),
+    (org_id, maintainer),
+);
     }
 
     pub fn get_maintainer(env: Env, address: Address) -> Maintainer {
@@ -219,13 +293,16 @@ impl PayoutRegistry {
     // Payout Allocation & Claiming
     // ─────────────────────────────────────────────────────────────────────────
 
-    pub fn allocate_payout(env: Env, org_id: Symbol, maintainer: Address, amount: i128) {
+    pub fn allocate_payout(env: Env, org_id: Symbol, maintainer: Address, amount: i128, unlock_timestamp: u64) {
+        Self::assert_active(&env);
         let admin: Address = env
             .storage()
             .persistent()
             .get(&DataKey::OrgAdmin(org_id.clone()))
             .expect("organization not found");
-        admin.require_auth();
+        
+        // Strict authorization: ensure the admin authorizes this specific payout allocation
+        admin.require_auth_for_args((org_id.clone(), maintainer.clone(), amount, unlock_timestamp).into_val(&env));
 
         if amount <= 0 {
             panic!("payout amount must be positive");
@@ -251,18 +328,19 @@ impl PayoutRegistry {
             .set(&budget_key, &(current_budget - amount));
 
         let balance_key = DataKey::MaintainerBalance(maintainer.clone());
-        let current_balance: i128 = env
+        let mut current_payout: MaintainerPayout = env
             .storage()
             .persistent()
             .get(&balance_key)
-            .unwrap_or(0_i128);
-        let new_balance = current_balance + amount;
-        env.storage().persistent().set(&balance_key, &new_balance);
+            .unwrap_or(MaintainerPayout { amount: 0, unlock_timestamp: 0 });
+        current_payout.amount = current_payout.amount.checked_add(amount).expect("payout amount overflow");
+        current_payout.unlock_timestamp = unlock_timestamp;
+        env.storage().persistent().set(&balance_key, &current_payout);
 
         env.events().publish(
-            (symbol_short!("payout"), symbol_short!("allocated")),
-            (org_id, maintainer, amount),
-        );
+    (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "PayoutAllocated")),
+    (org_id, maintainer, amount),
+);
     }
 
     /// Allocate payouts to multiple maintainers in a single transaction.
@@ -350,23 +428,27 @@ impl PayoutRegistry {
     }
 
     pub fn get_claimable_balance(env: Env, maintainer: Address) -> i128 {
-        env.storage()
+        let payout: MaintainerPayout = env.storage()
             .persistent()
             .get(&DataKey::MaintainerBalance(maintainer))
-            .unwrap_or(0_i128)
+            .unwrap_or(MaintainerPayout { amount: 0, unlock_timestamp: 0 });
+        payout.amount
     }
 
     pub fn claim_payout(env: Env, maintainer: Address) -> i128 {
-        maintainer.require_auth();
+        Self::assert_active(&env);
+        
+        // Strict authorization: ensure the maintainer is the one claiming
+        maintainer.require_auth_for_args((maintainer.clone(),).into_val(&env));
 
         let balance_key = DataKey::MaintainerBalance(maintainer.clone());
-        let claimable: i128 = env
+        let payout: MaintainerPayout = env
             .storage()
             .persistent()
             .get(&balance_key)
-            .unwrap_or(0_i128);
+            .unwrap_or(MaintainerPayout { amount: 0, unlock_timestamp: 0 });
 
-        if claimable == 0 {
+        if payout.amount == 0 {
             panic!("no claimable balance");
         }
 
@@ -375,14 +457,110 @@ impl PayoutRegistry {
 
         let token = Self::get_token(env.clone());
         let token_client = token::Client::new(&env, &token);
-        token_client.transfer(&env.current_contract_address(), &maintainer, &claimable);
+        token_client.transfer(&env.current_contract_address(), &maintainer, &payout.amount);
 
         env.events().publish(
-            (symbol_short!("payout"), symbol_short!("claimed")),
-            (maintainer, claimable),
-        );
+    (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "PayoutClaimed")),
+    (maintainer, payout.amount),
+);
 
-        claimable
+        payout.amount
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Protocol Pause/Unpause
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Pause the protocol. Only the protocol admin can call this.
+    /// 
+    /// When paused, all fund_org, allocate_payout, and claim_payout operations
+    /// will be blocked with a "protocol is paused" error.
+    /// 
+    /// # Arguments
+    /// * `env` - The contract environment
+    /// * `protocol_admin` - The address of the protocol admin (must match stored admin)
+    pub fn pause_protocol(env: Env, protocol_admin: Address) {
+        // Verify the caller is the protocol admin
+        let stored_admin = Self::get_protocol_admin(env.clone());
+        if stored_admin != protocol_admin {
+            panic!("unauthorized: not protocol admin");
+        }
+        
+        // Require authentication from the protocol admin
+        protocol_admin.require_auth();
+        
+        // Update the protocol state to paused
+        env.storage().persistent().set(&DataKey::ProtocolState, &ProtocolState::Paused);
+        
+        // Emit pause event
+        env.events().publish(
+            (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "ProtocolPaused")),
+            protocol_admin,
+        );
+    }
+
+    /// Unpause the protocol. Only the protocol admin can call this.
+    /// 
+    /// When unpaused, normal operations resume.
+    /// 
+    /// # Arguments
+    /// * `env` - The contract environment
+    /// * `protocol_admin` - The address of the protocol admin (must match stored admin)
+    pub fn unpause_protocol(env: Env, protocol_admin: Address) {
+        // Verify the caller is the protocol admin
+        let stored_admin = Self::get_protocol_admin(env.clone());
+        if stored_admin != protocol_admin {
+            panic!("unauthorized: not protocol admin");
+        }
+        
+        // Require authentication from the protocol admin
+        protocol_admin.require_auth();
+        
+        // Update the protocol state to active
+        env.storage().persistent().set(&DataKey::ProtocolState, &ProtocolState::Active);
+        
+        // Emit unpause event
+        env.events().publish(
+            (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "ProtocolUnpaused")),
+            protocol_admin,
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Contract Upgradeability
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Upgrade the contract to a new WASM binary.
+    /// 
+    /// This function can only be called by the protocol admin and allows for
+    /// upgrading the contract code while preserving all contract state.
+    /// 
+    /// # Arguments
+    /// * `env` - The contract environment
+    /// * `protocol_admin` - The address of the protocol admin (must match stored admin)
+    /// * `new_wasm_hash` - The 32-byte hash of the new WASM binary
+    /// 
+    /// # Panics
+    /// * If the caller is not the protocol admin
+    /// * If the WASM hash is invalid
+    pub fn upgrade(env: Env, protocol_admin: Address, new_wasm_hash: BytesN<32>) {
+        // Verify the caller is the protocol admin
+        let stored_admin = Self::get_protocol_admin(env.clone());
+        if stored_admin != protocol_admin {
+            panic!("unauthorized: not protocol admin");
+        }
+        
+        // Require authentication from the protocol admin
+        protocol_admin.require_auth();
+        
+        // Perform the upgrade
+        env.deployer().update_current_contract_wasm(new_wasm_hash);
+        
+        // Emit upgrade event
+        env.events().publish(
+            (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "ContractUpgraded")),
+            (protocol_admin, new_wasm_hash),
+        );
     }
 }
 #[cfg(test)]
