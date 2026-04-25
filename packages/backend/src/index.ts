@@ -20,6 +20,8 @@
  */
 
 import Fastify from "fastify";
+import { profileRoutes } from "./routes/profile.js";
+
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
 import { SERVER_HOST, SERVER_PORT } from "./config/env.js";
@@ -82,6 +84,7 @@ await server.register(errorHandler);
 // All contract-related routes are mounted under /api/v1/contract.
 // The v1 prefix supports future API versioning without breaking changes.
 await server.register(contractRoutes, { prefix: "/api/v1/contract" });
+await server.register(profileRoutes, { prefix: "/api/v1/profile" });
 await server.register(tokenRoutes, { prefix: "/api/v1/tokens" });
 
 await server.register(statsRoutes, { prefix: "/api/stats" });

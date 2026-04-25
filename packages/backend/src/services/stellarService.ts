@@ -54,6 +54,23 @@ export interface ContractCallResult {
   transactionHash?: string;
 }
 
+// ── Add to Types section ──────────────────────────────────────────────────────
+
+export interface PayoutEvent {
+  orgId: string;
+  amountStroops: bigint;
+  ledger: number;
+  ledgerClosedAt: string;
+  txHash: string;
+}
+
+export interface ProfileStats {
+  address: string;
+  totalStroops: bigint;
+  totalXlm: string;
+  orgIds: string[];
+  payouts: PayoutEvent[];
+}
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 export class StellarService {
@@ -159,30 +176,91 @@ export class StellarService {
     return BigInt(scValToNative(result as xdr.ScVal) as number);
   }
 
+
+
+  // ── Add inside StellarService class, after readOrgBudget ──────────────────────
+
   /**
-   * Get all pending payouts for a maintainer across organizations.
+   * Fetch all historical payout events for a maintainer address.
    *
-   * @param maintainerAddress - Stellar public key
-   * @returns Array of pending payouts
+   * Uses Soroban RPC `getEvents` filtered by contract ID and the maintainer
+   * address in topic[1]. This is the on-chain equivalent of a DB index on
+   * `maintainerAddress`.
+   *
+   * NOTE: Soroban RPC retains roughly 17,280 ledgers (~24 hrs on Testnet).
+   * Set PROFILE_START_LEDGER in .env to the contract deployment ledger so
+   * history is not silently truncated.
+   *
+   * Expected event layout emitted by `allocate_payout`:
+   *   topics: [Symbol("allocate_payout"), Address(maintainer), Symbol(orgId)]
+   *   data:   i128(amountStroops)
+   *
+   * TODO: Confirm this matches the Rust contract's event::publish() call.
    */
-  async getMaintainerPayouts(maintainerAddress: string): Promise<Array<{ orgId: string; amount: number }>> {
-    try {
-      const maintainerResult = await this._simulateContractCall("get_maintainer", [
-        nativeToScVal(maintainerAddress, { type: "address" }),
-      ]);
-      const maintainer = scValToNative(maintainerResult as xdr.ScVal) as { org_id: string };
+  async readProfileStats(maintainerAddress: string): Promise<ProfileStats> {
+    const startLedger = parseInt(
+      process.env["PROFILE_START_LEDGER"] ?? "1",
+      10
+    );
 
-      const amount = await this.readClaimableBalance(maintainerAddress);
+    // Build XDR filter for topic[1] = maintainerAddress
+    const addressXdr = nativeToScVal(maintainerAddress, {
+      type: "address",
+    }).toXDR("base64");
 
-      if (amount > 0n) {
-        return [{ orgId: maintainer.org_id, amount: Number(amount) }];
+    const eventsResponse = await this.rpcServer.getEvents({
+      startLedger,
+      filters: [
+        {
+          type: "contract",
+          contractIds: [CONTRACT_ID],
+          // topic[0] = any function name, topic[1] = this maintainer
+          topics: [["*", addressXdr]],
+        },
+      ],
+      limit: 200,
+    });
+
+    const payouts: PayoutEvent[] = [];
+    const orgSet = new Set<string>();
+    let totalStroops = BigInt(0);
+
+    for (const event of eventsResponse.events ?? []) {
+      try {
+        // topic[2] = orgId Symbol, data = i128 amount
+        const orgId = event.topic[2]
+          ? (scValToNative(event.topic[2]) as string)
+          : "unknown";
+
+        const amount = BigInt(
+          scValToNative(event.value) as number
+        );
+
+        orgSet.add(orgId);
+        totalStroops += amount;
+        payouts.push({
+          orgId,
+          amountStroops: amount,
+          ledger: event.ledger,
+          ledgerClosedAt: event.ledgerClosedAt,
+          txHash: event.txHash,
+        });
+      } catch {
+        // Skip any malformed events — don't crash the endpoint.
       }
-      return [];
-    } catch (error) {
-      return [];
     }
-  }
 
+    // Sort timeline newest first.
+    payouts.sort((a, b) => b.ledger - a.ledger);
+
+    return {
+      address: maintainerAddress,
+      totalStroops,
+      totalXlm: (Number(totalStroops) / 10_000_000).toFixed(7),
+      orgIds: [...orgSet],
+      payouts,
+    };
+  }
   /**
    * Get the current state of the contract for indexing purposes.
    * This method fetches key contract data that should be indexed.
