@@ -11,6 +11,7 @@ import * as cron from 'node-cron';
 import { RPC_URL, CONTRACT_ID, DEPLOYMENT_LEDGER } from '../config/env.js';
 import { stellarService } from './stellarService.js';
 import { prisma } from './db.js';
+import { emitSSEEvent } from '../routes/events.js';
 
 export class IndexerService {
   private isRunning = false;
@@ -103,8 +104,37 @@ export class IndexerService {
       if (eventsResponse.events && eventsResponse.events.length > 0) {
         console.log(`Processing ${eventsResponse.events.length} new events...`);
         
-        // In a real implementation, we would process each event in a transaction
-        // For now, we'll just update the cursor to the latest event's ledger
+        // Process each event and emit SSE events for relevant ones
+        for (const event of eventsResponse.events) {
+          try {
+            // Extract event data and check for relevant events
+            const eventData = {
+              ledger: event.ledger,
+              timestamp: Date.now(),
+              topic: event.topic,
+              value: event.value
+            };
+            
+            // Emit generic blockchain event for now
+            // In a real implementation, you'd parse the event data to determine the type
+            console.log('Emitting SSE event for blockchain event');
+            emitSSEEvent('blockchain_event', eventData);
+            
+            // For demonstration, also emit specific events based on topic content
+            const topicStr = JSON.stringify(event.topic).toLowerCase();
+            if (topicStr.includes('payout') || topicStr.includes('claim')) {
+              emitSSEEvent('payout_claimed', eventData);
+            }
+            
+            if (topicStr.includes('fund') || topicStr.includes('deposit')) {
+              emitSSEEvent('funds_deposited', eventData);
+            }
+          } catch (error) {
+            console.error('Error processing event for SSE:', error);
+          }
+        }
+        
+        // Update the cursor to the latest event's ledger
         const latestLedger = Math.max(...eventsResponse.events.map(e => e.ledger));
         
         await prisma.$transaction(async (tx) => {

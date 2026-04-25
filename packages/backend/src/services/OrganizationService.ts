@@ -3,7 +3,7 @@ import { stellarService } from "../services/stellarService.js";
 import { redis } from "../services/cache.js";
 
 export interface PaginatedOrgsResponse {
-  data: { id: string; name: string; admin: string }[];
+  data: { id: string; name: string; admin: string; publicBudget?: string }[];
   meta: {
     totalPages: number;
     currentPage: number;
@@ -12,9 +12,9 @@ export interface PaginatedOrgsResponse {
 }
 
 export class OrganizationService {
-  async getOrganizations(page: number, limit: number): Promise<PaginatedOrgsResponse> {
+  async getOrganizations(page: number, limit: number, search?: string): Promise<PaginatedOrgsResponse> {
     const skip = (page - 1) * limit;
-    const cacheKey = `orgs:page:${page}:limit:${limit}`;
+    const cacheKey = `orgs:page:${page}:limit:${limit}:search:${search || ''}`;
 
     // 1. Try cache if it's the first page
     if (page === 1) {
@@ -26,17 +26,35 @@ export class OrganizationService {
 
     // 2. Fetch from Repo
     const [orgs, totalCount] = await Promise.all([
-      organizationRepository.findMany(skip, limit),
-      organizationRepository.count(),
+      organizationRepository.findMany(skip, limit, search),
+      organizationRepository.count(search),
     ]);
+
+    // 3. Fetch public budgets for each organization
+    const orgsWithBudget = await Promise.all(
+      orgs.map(async (org) => {
+        try {
+          const budget = await stellarService.readOrgBudget(org.id);
+          return {
+            id: org.id,
+            name: org.name,
+            admin: org.admin,
+            publicBudget: budget.toString(),
+          };
+        } catch (error) {
+          // If budget fetch fails, return org without budget
+          return {
+            id: org.id,
+            name: org.name,
+            admin: org.admin,
+          };
+        }
+      })
+    );
 
     const totalPages = Math.ceil(totalCount / limit);
     const response: PaginatedOrgsResponse = {
-      data: orgs.map((org) => ({
-        id: org.id,
-        name: org.name,
-        admin: org.admin,
-      })),
+      data: orgsWithBudget,
       meta: {
         totalPages,
         currentPage: page,
@@ -44,7 +62,7 @@ export class OrganizationService {
       },
     };
 
-    // 3. Cache the first page for 5 minutes
+    // 4. Cache the first page for 5 minutes
     if (page === 1) {
       await redis.set(cacheKey, JSON.stringify(response), "EX", 300);
     }
