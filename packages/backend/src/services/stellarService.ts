@@ -516,6 +516,80 @@ export class StellarService {
       transactionHash: sendResult.hash,
     };
   }
+
+  /**
+   * Create a claim payout transaction for a maintainer.
+   */
+  async createClaimPayoutTransaction(orgId: string, maintainerAddress: string): Promise<string> {
+    if (!CONTRACT_ID) {
+      throw new Error("CONTRACT_ID not configured");
+    }
+
+    // Get the maintainer's account
+    const account = await this._callWithRetry(() => this.horizon.loadAccount(maintainerAddress));
+
+    // Build the claim_payout transaction
+    const contractArgs = [
+      nativeToScVal(orgId),
+    ];
+
+    const transaction = new TransactionBuilder(account, {
+      fee: BASE_FEE,
+      networkPassphrase: NETWORK_PASSPHRASE,
+    })
+      .addOperation({
+        type: "invoke_contract_function",
+        contract: CONTRACT_ID,
+        function: "claim_payout",
+        args: contractArgs,
+      } as any)
+      .setTimeout(30)
+      .build();
+
+    // Simulate the transaction to get the transaction data
+    const simResult = await this._callWithRetry(() => this.rpcServer.simulateTransaction(transaction));
+    
+    if (SorobanRpc.Api.isSimulationError(simResult)) {
+      throw new Error(`Simulation error: ${simResult.error}`);
+    }
+
+    // Prepare the transaction for signing
+    const preparedTx = await this._callWithRetry(() => 
+      this.rpcServer.prepareTransaction(transaction, simResult)
+    );
+
+    return preparedTx.toXDR();
+  }
+
+  /**
+   * Submit a signed transaction to the Stellar network.
+   */
+  async submitTransaction(signedTransactionXdr: string): Promise<ContractCallResult> {
+    const transaction = TransactionBuilder.fromXDR(signedTransactionXdr, NETWORK_PASSPHRASE);
+    
+    const sendResult = await this._callWithRetry(() => this.rpcServer.sendTransaction(transaction));
+
+    if (sendResult.status === "ERROR") {
+      throw new Error(`Transaction failed: ${sendResult.errorResult || 'Unknown error'}`);
+    }
+
+    // Poll for confirmation
+    let getResult = await this._callWithRetry(() => this.rpcServer.getTransaction(sendResult.hash));
+    while (getResult.status === "NOT_FOUND") {
+      await new Promise((r) => setTimeout(r, 1000));
+      getResult = await this._callWithRetry(() => this.rpcServer.getTransaction(sendResult.hash));
+    }
+
+    if (getResult.status !== "SUCCESS") {
+      throw new Error(`Transaction not successful: ${getResult.status}`);
+    }
+
+    return {
+      success: true,
+      value: scValToNative(getResult.returnValue as xdr.ScVal),
+      transactionHash: sendResult.hash,
+    };
+  }
 }
 
 // Singleton export — avoids creating multiple SDK client instances.

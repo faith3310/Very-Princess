@@ -1,5 +1,6 @@
 import { organizationService, PaginatedOrgsResponse } from "../services/OrganizationService.js";
 import { payoutService } from "../services/PayoutService.js";
+import { stellarService } from "../services/stellarService.js";
 
 // ─── Response Types ───────────────────────────────────────────────────────────
 
@@ -43,14 +44,23 @@ export interface PayoutResponse {
   amountStroops: string;
 }
 
+export interface ClaimTransactionResponse {
+  transactionXdr: string;
+}
+
+export interface SubmitTransactionResponse {
+  success: boolean;
+  transactionHash: string | undefined;
+}
+
 // ─── Controller ───────────────────────────────────────────────────────────────
 
 export const contractController = {
   /**
    * Fetch a paginated list of organizations.
    */
-  async getOrganizations(page: number, limit: number): Promise<PaginatedOrgsResponse> {
-    return organizationService.getOrganizations(page, limit);
+  async getOrganizations(page: number, limit: number, search?: string): Promise<PaginatedOrgsResponse> {
+    return organizationService.getOrganizations(page, limit, search);
   },
 
   /**
@@ -151,6 +161,25 @@ export const contractController = {
       orgId,
       maintainer: maintainerAddress,
       amountStroops,
+    };
+  },
+
+  /**
+   * Create a claim payout transaction for a maintainer.
+   */
+  async createClaimTransaction(orgId: string, maintainerAddress: string): Promise<ClaimTransactionResponse> {
+    const transactionXdr = await stellarService.createClaimPayoutTransaction(orgId, maintainerAddress);
+    return { transactionXdr };
+  },
+
+  /**
+   * Submit a signed transaction to the Stellar network.
+   */
+  async submitTransaction(signedTransaction: string): Promise<SubmitTransactionResponse> {
+    const result = await stellarService.submitTransaction(signedTransaction);
+    return {
+      success: result.success,
+      transactionHash: result.transactionHash,
     };
   },
 } as const;

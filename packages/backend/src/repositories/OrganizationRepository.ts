@@ -8,16 +8,31 @@ export class OrganizationRepository {
     });
   }
 
-  async findMany(skip: number, take: number): Promise<Organization[]> {
+  async findMany(skip: number, take: number, search?: string): Promise<Organization[]> {
+    const where = search ? {
+      OR: [
+        { id: { contains: search, mode: 'insensitive' } },
+        { name: { contains: search, mode: 'insensitive' } },
+      ],
+    } : {};
+
     return prisma.organization.findMany({
+      where,
       skip,
       take,
       orderBy: { createdAt: "desc" },
     });
   }
 
-  async count(): Promise<number> {
-    return prisma.organization.count();
+  async count(search?: string): Promise<number> {
+    const where = search ? {
+      OR: [
+        { id: { contains: search, mode: 'insensitive' } },
+        { name: { contains: search, mode: 'insensitive' } },
+      ],
+    } : {};
+
+    return prisma.organization.count({ where });
   }
 
   async upsert(id: string, name: string, admin: string): Promise<Organization> {

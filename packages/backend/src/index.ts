@@ -30,6 +30,7 @@ import rateLimit from "@fastify/rate-limit";
 import { errorHandler } from "./plugins/errorHandler.js";
 import { statsRoutes } from "./routes/stats.js";
 import { tokenRoutes } from "./routes/token.js";
+import { eventsRoutes } from "./routes/events.js";
 import { indexerService } from "./services/indexerService.js";
 
 // ─── Server Setup ─────────────────────────────────────────────────────────────
@@ -89,6 +90,7 @@ await server.register(profileRoutes, { prefix: "/api/v1/profile" });
 await server.register(tokenRoutes, { prefix: "/api/v1/tokens" });
 
 await server.register(statsRoutes, { prefix: "/api/stats" });
+await server.register(eventsRoutes, { prefix: "/api/events" });
 
 // Health check — used by CI, load balancers, and monitoring.
 server.get("/health", async () => ({
