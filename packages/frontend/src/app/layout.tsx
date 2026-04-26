@@ -12,6 +12,7 @@
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
+import { TRPCProvider } from "../trpc/provider";
 import "./globals.css";
 
 // ── Font Loading ──────────────────────────────────────────────────────────────
@@ -71,7 +72,9 @@ export default function RootLayout({
           className="pointer-events-none fixed inset-0 bg-hero-pattern"
         />
         {/* Page content */}
-        <div className="relative">{children}</div>
+        <div className="relative">
+          <TRPCProvider>{children}</TRPCProvider>
+        </div>
         
         {/* Toast notifications */}
         <Toaster
