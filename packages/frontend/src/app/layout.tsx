@@ -1,12 +1,8 @@
 /**
  * @file layout.tsx
  * @description Root layout for the very-princess Next.js application.
- *
- * This layout wraps every page with:
- *  - Google Fonts (Inter + JetBrains Mono)
- *  - Global Tailwind base styles
- *  - A consistent dark-space background
- *  - SEO meta tags
+ * 
+ * This is a minimal root layout that delegates to the locale-specific layouts.
  */
 
 import type { Metadata } from "next";
@@ -63,6 +59,7 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
+  return children;
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <body className="min-h-screen bg-stellar-blue font-sans text-white antialiased">
