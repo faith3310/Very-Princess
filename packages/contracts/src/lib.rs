@@ -13,7 +13,7 @@ use soroban_sdk::{
 pub struct Organization {
     pub id: Symbol,
     pub name: String,
-    pub admin: Address,
+    pub admins: Vec<Address>,
 }
 
 #[contracttype]
@@ -150,10 +150,13 @@ impl PayoutRegistry {
             panic!("organization already registered");
         }
 
+        let mut admins = Vec::new(&env);
+        admins.push_back(admin.clone());
+
         let org = Organization {
             id: id.clone(),
             name,
-            admin: admin.clone(),
+            admins: admins.clone(),
         };
         env.storage().persistent().set(&org_key, &org);
 
@@ -198,16 +201,12 @@ impl PayoutRegistry {
         if !env
             .storage()
             .persistent()
-            .has(&DataKey::OrgAdmin(org_id.clone()))
+            .has(&DataKey::Organization(org_id.clone()))
         {
             panic!("organization not found");
         }
 
-        let token = Self::get_token(env.clone());
-        let token_client = token::Client::new(&env, &token);
-
-        token_client.transfer(&from, &env.current_contract_address(), &amount);
-
+        // Effects: Update the Persistent Storage first (CEI)
         let budget_key = DataKey::OrgBudget(org_id.clone());
         let current_budget: i128 = env.storage().persistent().get(&budget_key).unwrap_or(0);
         let new_budget = current_budget.checked_add(amount).expect("budget overflow");
@@ -215,10 +214,95 @@ impl PayoutRegistry {
             .persistent()
             .set(&budget_key, &new_budget);
 
+        // Interactions: Execute the token transfer as the absolute last step
+        // This follows the Check-Effects-Interactions pattern.
+        let token = Self::get_token(env.clone());
+        let token_client = token::Client::new(&env, &token);
+        token_client.transfer(&from, &env.current_contract_address(), &amount);
+
         env.events().publish(
-    (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "OrgFunded")),
-    (org_id, from, amount),
-);
+            (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "OrgFunded")),
+            (org_id, from, amount),
+        );
+    }
+
+    pub fn add_admin(env: Env, org_id: Symbol, new_admin: Address) {
+        let mut org = Self::get_org(env.clone(), org_id.clone());
+        
+        // Authorization: Check if the caller is an existing admin
+        let mut is_authorized = false;
+        for i in 0..org.admins.len() {
+            let admin = org.admins.get(i).unwrap();
+            if admin.has_auth() {
+                is_authorized = true;
+                break;
+            }
+        }
+        
+        if !is_authorized {
+            panic!("not authorized to add admin");
+        }
+
+        if org.admins.len() >= 10 {
+            panic!("max admin limit reached");
+        }
+
+        for i in 0..org.admins.len() {
+            if org.admins.get(i).unwrap() == new_admin {
+                panic!("address is already an admin");
+            }
+        }
+
+        org.admins.push_back(new_admin.clone());
+        env.storage().persistent().set(&DataKey::Organization(org_id.clone()), &org);
+
+        env.events().publish(
+            (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "AdminAdded")),
+            (org_id, new_admin),
+        );
+    }
+
+    pub fn remove_admin(env: Env, org_id: Symbol, admin_to_remove: Address) {
+        let mut org = Self::get_org(env.clone(), org_id.clone());
+        
+        // Authorization: Check if the caller is an existing admin
+        let mut is_authorized = false;
+        for i in 0..org.admins.len() {
+            let admin = org.admins.get(i).unwrap();
+            if admin.has_auth() {
+                is_authorized = true;
+                break;
+            }
+        }
+        
+        if !is_authorized {
+            panic!("not authorized to remove admin");
+        }
+
+        if org.admins.len() <= 1 {
+            panic!("cannot remove the last admin");
+        }
+
+        let mut index = None;
+        for i in 0..org.admins.len() {
+            if org.admins.get(i).unwrap() == admin_to_remove {
+                index = Some(i);
+                break;
+            }
+        }
+
+        match index {
+            Some(i) => {
+                org.admins.remove(i);
+                env.storage().persistent().set(&DataKey::Organization(org_id.clone()), &org);
+            },
+            None => panic!("address is not an admin"),
+        }
+
+        env.events().publish(
+            (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "AdminRemoved")),
+            (org_id, admin_to_remove),
+        );
     }
 
     pub fn get_org_budget(env: Env, id: Symbol) -> i128 {
@@ -295,14 +379,27 @@ impl PayoutRegistry {
 
     pub fn allocate_payout(env: Env, org_id: Symbol, maintainer: Address, amount: i128, unlock_timestamp: u64) {
         Self::assert_active(&env);
-        let admin: Address = env
-            .storage()
-            .persistent()
-            .get(&DataKey::OrgAdmin(org_id.clone()))
-            .expect("organization not found");
+        let org = Self::get_org(env.clone(), org_id.clone());
         
-        // Strict authorization: ensure the admin authorizes this specific payout allocation
-        admin.require_auth_for_args((org_id.clone(), maintainer.clone(), amount, unlock_timestamp).into_val(&env));
+        // Authorization: Check if the caller is one of the authorized admins
+        let mut is_authorized = false;
+        let mut authorized_admin = None;
+        for i in 0..org.admins.len() {
+            let admin = org.admins.get(i).unwrap();
+            // We use require_auth_for_args to ensure the specific admin authorized this action
+            // However, we only need ONE of them to authorize.
+            // Since require_auth_for_args panics if not authorized, we should check if they HAVE auth.
+            if admin.has_auth() {
+                admin.require_auth_for_args((org_id.clone(), maintainer.clone(), amount, unlock_timestamp).into_val(&env));
+                is_authorized = true;
+                authorized_admin = Some(admin);
+                break;
+            }
+        }
+
+        if !is_authorized {
+            panic!("not authorized: caller is not an organization admin");
+        }
 
         if amount <= 0 {
             panic!("payout amount must be positive");
@@ -357,14 +454,17 @@ impl PayoutRegistry {
         // Require admin auth once for the entire batch
         admin.require_auth();
 
-        // Verify caller is the registered admin for this org
-        let stored_admin: Address = env
-            .storage()
-            .persistent()
-            .get(&DataKey::OrgAdmin(org_id.clone()))
-            .expect("organization not found");
-        if stored_admin != admin {
-            panic!("caller is not the organization admin");
+        // Verify caller is one of the registered admins for this org
+        let org = Self::get_org(env.clone(), org_id.clone());
+        let mut is_authorized = false;
+        for i in 0..org.admins.len() {
+            if org.admins.get(i).unwrap() == admin {
+                is_authorized = true;
+                break;
+            }
+        }
+        if !is_authorized {
+            panic!("caller is not an organization admin");
         }
 
         // Enforce batch size limit to prevent out-of-gas errors
@@ -442,7 +542,7 @@ impl PayoutRegistry {
         maintainer.require_auth_for_args((maintainer.clone(),).into_val(&env));
 
         let balance_key = DataKey::MaintainerBalance(maintainer.clone());
-        let payout: MaintainerPayout = env
+        let mut payout: MaintainerPayout = env
             .storage()
             .persistent()
             .get(&balance_key)
@@ -452,19 +552,29 @@ impl PayoutRegistry {
             panic!("no claimable balance");
         }
 
-        // Reset balance BEFORE transfer (Checks-Effects-Interactions)
-        env.storage().persistent().set(&balance_key, &0_i128);
+        if env.ledger().timestamp() < payout.unlock_timestamp {
+            panic!("payout is still locked");
+        }
 
+        let amount_to_claim = payout.amount;
+
+        // Effects: Update the Persistent Storage first (CEI)
+        // Reset balance BEFORE transfer to prevent reentrancy or state corruption
+        payout.amount = 0;
+        env.storage().persistent().set(&balance_key, &payout);
+
+        // Interactions: Execute the token transfer as the absolute last step
+        // This follows the Check-Effects-Interactions pattern.
         let token = Self::get_token(env.clone());
         let token_client = token::Client::new(&env, &token);
-        token_client.transfer(&env.current_contract_address(), &maintainer, &payout.amount);
+        token_client.transfer(&env.current_contract_address(), &maintainer, &amount_to_claim);
 
         env.events().publish(
-    (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "PayoutClaimed")),
-    (maintainer, payout.amount),
-);
+            (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "PayoutClaimed")),
+            (maintainer, amount_to_claim),
+        );
 
-        payout.amount
+        amount_to_claim
     }
 
     // ─────────────────────────────────────────────────────────────────────────

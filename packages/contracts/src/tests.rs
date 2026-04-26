@@ -66,7 +66,7 @@ mod tests {
 
         let org = client.get_org(&org_sym);
         assert_eq!(org.id, org_sym);
-        assert_eq!(org.admin, admin);
+        assert_eq!(org.admins.get(0).unwrap(), admin);
         assert_eq!(client.get_org_budget(&org_sym), 0);
     }
 
@@ -326,5 +326,43 @@ mod tests {
         assert_eq!(token_client.balance(&m1), 12_000_000);
         assert_eq!(client.get_claimable_balance(&m1), 0);
         assert_eq!(client.get_org_budget(&org_sym), 18_000_000);
+    }
+
+    #[test]
+    fn test_add_remove_admin() {
+        let Setup { env, client, .. } = setup();
+        let org_sym = symbol_short!("adminorg");
+        let admin1 = register_test_org(&env, &client, org_sym.clone());
+        let admin2 = Address::generate(&env);
+
+        // Add admin2
+        client.add_admin(&org_sym, &admin2);
+        let org = client.get_org(&org_sym);
+        assert_eq!(org.admins.len(), 2);
+        assert!(org.admins.contains(&admin2));
+
+        // Remove admin1
+        client.remove_admin(&org_sym, &admin1);
+        let org = client.get_org(&org_sym);
+        assert_eq!(org.admins.len(), 1);
+        assert_eq!(org.admins.get(0).unwrap(), admin2);
+
+        // Cannot remove the last admin
+        let result = client.try_remove_admin(&org_sym, &admin2);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_max_admin_limit() {
+        let Setup { env, client, .. } = setup();
+        let org_sym = symbol_short!("maxorg");
+        register_test_org(&env, &client, org_sym.clone());
+
+        for _ in 0..9 {
+            client.add_admin(&org_sym, &Address::generate(&env));
+        }
+
+        let result = client.try_add_admin(&org_sym, &Address::generate(&env));
+        assert!(result.is_err()); // Limit is 10
     }
 }

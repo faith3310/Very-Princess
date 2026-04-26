@@ -12,6 +12,7 @@ import { WalletButton } from "@/components/WalletButton";
 import { PayoutCard } from "@/components/PayoutCard";
 import { FundOrgModal } from "@/components/FundOrgModal";
 import { AllocatePayoutModal } from "@/components/AllocatePayoutModal";
+import { WebhookSettings } from "@/components/WebhookSettings";
 import { useFreighter } from "@/hooks/useFreighter";
 import {
   readOrganization,
@@ -36,8 +37,8 @@ function DashboardPageInner() {
   const [showFundModal, setShowFundModal] = useState(false);
   const [claimingAddress, setClaimingAddress] = useState<string | null>(null);
   const [balances, setBalances] = useState<MaintainerBalance[]>([]);
-  const [isPending, startTransition] = useTransition();
   const [showAllocateModal, setShowAllocateModal] = useState(false);
+  const [activeTab, setActiveTab] = useState<"overview" | "settings">("overview");
   
   const [optimisticBalances, addOptimisticBalance] = useOptimistic(
     balances,
@@ -242,6 +243,32 @@ function DashboardPageInner() {
               </p>
             </div>
 
+            {/* ── Tabs ── */}
+            {organization && (
+              <div className="mb-6 flex gap-8 border-b border-white/10">
+                <button
+                  onClick={() => setActiveTab("overview")}
+                  className={`pb-4 text-sm font-semibold transition-all ${
+                    activeTab === "overview"
+                      ? "border-b-2 border-stellar-purple text-white"
+                      : "text-white/40 hover:text-white/70"
+                  }`}
+                >
+                  Overview
+                </button>
+                <button
+                  onClick={() => setActiveTab("settings")}
+                  className={`pb-4 text-sm font-semibold transition-all ${
+                    activeTab === "settings"
+                      ? "border-b-2 border-stellar-purple text-white"
+                      : "text-white/40 hover:text-white/70"
+                  }`}
+                >
+                  Settings
+                </button>
+              </div>
+            )}
+
             {/* ── Error ── */}
             {error && (
               <div className="mb-6 rounded-xl border border-red-500/30 bg-red-500/10 px-4 py-3 text-sm text-red-400">
@@ -249,95 +276,101 @@ function DashboardPageInner() {
               </div>
             )}
 
-            {/* ── Org Info ── */}
+            {/* ── Content ── */}
             {organization && (
-              <div className="glass-card mb-8 p-6">
-                <div className="mb-4 flex items-center gap-3">
-                  <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-stellar-purple to-stellar-teal font-bold text-white">
-                    {organization.name.charAt(0).toUpperCase()}
-                  </div>
-                  <div>
-                    <h3 className="font-semibold text-white">
-                      {organization.name}
-                    </h3>
-                    <p className="font-mono text-xs text-white/40">
-                      ID: {organization.id}
-                    </p>
-                  </div>
-                </div>
-                <div className="rounded-lg border border-white/[0.06] bg-black/20 px-4 py-3">
-                  <p className="text-xs font-medium text-white/40">
-                    Admin Address
-                  </p>
-                  <p className="mt-1 break-all font-mono text-sm text-white/70">
-                    {organization.admin}
-                  </p>
-                </div>
-
-                {orgBudget && (
-                  <div className="mt-4 flex items-center justify-between rounded-xl border border-stellar-teal/20 bg-stellar-teal/5 p-4">
-                    <div>
-                      <p className="text-xs font-medium uppercase tracking-wider text-stellar-teal/80">
-                        Available Budget
-                      </p>
-                      <div className="mt-1 flex items-baseline gap-2">
-                        <span className="text-2xl font-bold tracking-tight text-white">
-                          {orgBudget.xlm}
-                        </span>
-                        <span className="text-sm font-medium text-stellar-teal">
-                          XLM
-                        </span>
+              activeTab === "overview" ? (
+                <>
+                  <div className="glass-card mb-8 p-6">
+                    <div className="mb-4 flex items-center gap-3">
+                      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-gradient-to-br from-stellar-purple to-stellar-teal font-bold text-white">
+                        {organization.name.charAt(0).toUpperCase()}
+                      </div>
+                      <div>
+                        <h3 className="font-semibold text-white">
+                          {organization.name}
+                        </h3>
+                        <p className="font-mono text-xs text-white/40">
+                          ID: {organization.id}
+                        </p>
                       </div>
                     </div>
-                    <div className="flex gap-2">
-                      <button
-                        onClick={() => setShowAllocateModal(true)}
-                        className="rounded-lg border border-stellar-purple/30 bg-stellar-purple/10 px-5 py-2.5 text-sm font-semibold text-stellar-purple hover:bg-stellar-purple/20 transition-all"
-                      >
-                        Allocate Payout
-                      </button>
-                      <button
-                        onClick={() => setShowFundModal(true)}
-                        className="rounded-lg bg-white/10 px-5 py-2.5 text-sm font-semibold text-white hover:bg-stellar-teal transition-all"
-                      >
-                        Fund Org
-                      </button>
+                    <div className="rounded-lg border border-white/[0.06] bg-black/20 px-4 py-3">
+                      <p className="text-xs font-medium text-white/40">
+                        Admin Address
+                      </p>
+                      <p className="mt-1 break-all font-mono text-sm text-white/70">
+                        {organization.admin}
+                      </p>
                     </div>
+
+                    {orgBudget && (
+                      <div className="mt-4 flex items-center justify-between rounded-xl border border-stellar-teal/20 bg-stellar-teal/5 p-4">
+                        <div>
+                          <p className="text-xs font-medium uppercase tracking-wider text-stellar-teal/80">
+                            Available Budget
+                          </p>
+                          <div className="mt-1 flex items-baseline gap-2">
+                            <span className="text-2xl font-bold tracking-tight text-white">
+                              {orgBudget.xlm}
+                            </span>
+                            <span className="text-sm font-medium text-stellar-teal">
+                              XLM
+                            </span>
+                          </div>
+                        </div>
+                        <div className="flex gap-2">
+                          <button
+                            onClick={() => setShowAllocateModal(true)}
+                            className="rounded-lg border border-stellar-purple/30 bg-stellar-purple/10 px-5 py-2.5 text-sm font-semibold text-stellar-purple hover:bg-stellar-purple/20 transition-all"
+                          >
+                            Allocate Payout
+                          </button>
+                          <button
+                            onClick={() => setShowFundModal(true)}
+                            className="rounded-lg bg-white/10 px-5 py-2.5 text-sm font-semibold text-white hover:bg-stellar-teal transition-all"
+                          >
+                            Fund Org
+                          </button>
+                        </div>
+                      </div>
+                    )}
                   </div>
-                )}
-              </div>
-            )}
 
-            {/* ── Maintainer Balances ── */}
-            {optimisticBalances.length > 0 && (
-              <div>
-                <h3 className="mb-4 text-sm font-semibold uppercase tracking-widest text-white/40">
-                  Maintainers ({optimisticBalances.length})
-                </h3>
-                <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
-                  {optimisticBalances.map((balance) => (
-                    <PayoutCard
-                      key={balance.address}
-                      balance={balance}
-                      onClaim={handleClaim}
-                      isClaiming={claimingAddress === balance.address}
-                    />
-                  ))}
-                </div>
-              </div>
-            )}
+                  {/* ── Maintainer Balances ── */}
+                  {optimisticBalances.length > 0 && (
+                    <div>
+                      <h3 className="mb-4 text-sm font-semibold uppercase tracking-widest text-white/40">
+                        Maintainers ({optimisticBalances.length})
+                      </h3>
+                      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-3">
+                        {optimisticBalances.map((balance) => (
+                          <PayoutCard
+                            key={balance.address}
+                            balance={balance}
+                            onClaim={handleClaim}
+                            isClaiming={claimingAddress === balance.address}
+                          />
+                        ))}
+                      </div>
+                    </div>
+                  )}
 
-            {/* ── Empty State ── */}
-            {organization && balances.length === 0 && !isLoading && (
-              <div className="rounded-2xl border border-dashed border-white/10 p-12 text-center">
-                <p className="text-sm text-white/40">
-                  No maintainers registered for{" "}
-                  <span className="font-mono text-white/60">
-                    {organization.id}
-                  </span>{" "}
-                  yet.
-                </p>
-              </div>
+                  {/* ── Empty State ── */}
+                  {balances.length === 0 && !isLoading && (
+                    <div className="rounded-2xl border border-dashed border-white/10 p-12 text-center">
+                      <p className="text-sm text-white/40">
+                        No maintainers registered for{" "}
+                        <span className="font-mono text-white/60">
+                          {organization.id}
+                        </span>{" "}
+                        yet.
+                      </p>
+                    </div>
+                  )}
+                </>
+              ) : (
+                <WebhookSettings orgId={organization.id} publicKey={publicKey || ""} />
+              )
             )}
           </>
         )}
