@@ -1,3 +1,4 @@
+#[allow(clippy::module_inception)]
 #[cfg(test)]
 mod tests {
     use crate::{PayoutParams, PayoutRegistry, PayoutRegistryClient};
@@ -9,6 +10,7 @@ mod tests {
     struct Setup {
         env: Env,
         client: PayoutRegistryClient<'static>,
+        #[allow(dead_code)]
         token_admin: Address,
         token: token::StellarAssetClient<'static>,
     }
@@ -24,7 +26,8 @@ mod tests {
         let contract_id = env.register_contract(None, PayoutRegistry);
         let client = PayoutRegistryClient::new(&env, &contract_id);
 
-        client.init(&token_contract_id.address());
+        let protocol_admin = Address::generate(&env);
+        client.init(&token_contract_id.address(), &protocol_admin);
 
         Setup {
             env,
@@ -36,14 +39,13 @@ mod tests {
 
     fn register_test_org(
         env: &Env,
-        client: &PayoutRegistryClient,
-        org_sym: Symbol,
+        client: &PayoutRegistryClient<'_>,
+        _org_sym: Symbol,
     ) -> Address {
         let admin = Address::generate(env);
         client.register_org(
-            &org_sym,
-            &String::from_str(env, "Test Organization"),
             &admin,
+            &String::from_str(env, "Test Organization"),
         );
         admin
     }
@@ -54,7 +56,7 @@ mod tests {
     fn test_init() {
         let Setup { env, client, .. } = setup();
         let additional_token = Address::generate(&env);
-        let result = client.try_init(&additional_token);
+        let result = client.try_init(&additional_token, &Address::generate(&env));
         assert!(result.is_err());
     }
 
@@ -100,7 +102,7 @@ mod tests {
         let maintainer = Address::generate(&env);
         client.add_maintainer(&org_sym, &maintainer);
 
-        let result = client.try_allocate_payout(&org_sym, &maintainer, &5_000_000_i128);
+        let result = client.try_allocate_payout(&org_sym, &maintainer, &5_000_000_i128, &1234567890_u64);
         assert!(result.is_err());
     }
 
@@ -121,7 +123,7 @@ mod tests {
 
         client.fund_org(&org_sym, &donor, &20_000_000);
 
-        client.allocate_payout(&org_sym, &maintainer, &5_000_000_i128);
+        client.allocate_payout(&org_sym, &maintainer, &5_000_000_i128, &1234567890_u64);
         assert_eq!(client.get_claimable_balance(&maintainer), 5_000_000);
         assert_eq!(client.get_org_budget(&org_sym), 15_000_000);
 
