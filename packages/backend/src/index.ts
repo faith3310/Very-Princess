@@ -35,6 +35,7 @@ import { organizationRoutes } from "./routes/organization.js";
 import { authRoutes } from "./routes/auth.js";
 import { webhookRoutes } from "./routes/webhook.js";
 import { indexerService } from "./services/indexerService.js";
+import { configureTRPC } from "./trpc/server.js";
 
 // ─── Server Setup ─────────────────────────────────────────────────────────────
 
@@ -83,6 +84,10 @@ await server.register(cors, {
 });
 
 await server.register(errorHandler);
+
+// ─── tRPC Configuration ────────────────────────────────────────────────────────
+
+await configureTRPC(server);
 
 // ─── Route Registration ───────────────────────────────────────────────────────
 
