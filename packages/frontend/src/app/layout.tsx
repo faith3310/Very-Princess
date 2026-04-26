@@ -59,7 +59,6 @@ export default function RootLayout({
 }: {
   children: React.ReactNode;
 }) {
-  return children;
   return (
     <html lang="en" className={`${inter.variable} ${jetbrainsMono.variable}`}>
       <body className="min-h-screen bg-stellar-blue font-sans text-white antialiased">
