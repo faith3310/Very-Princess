@@ -46,6 +46,13 @@ pub enum ProtocolState {
 }
 
 #[contracttype]
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct MultisigAdmin {
+    pub admins: Vec<Address>,
+    pub threshold: u32,
+}
+
+#[contracttype]
 pub enum DataKey {
     /// The global Stellar Asset Contract address configured during initialization.
     Token,
@@ -56,8 +63,8 @@ pub enum DataKey {
     MaintainerBalance(Address),
     /// Total budget currently held by this org (in stroops).
     OrgBudget(Symbol),
-    /// Protocol admin address for contract upgrades and emergency functions.
-    ProtocolAdmin,
+    /// Multisig admin configuration for contract upgrades and emergency functions.
+    MultisigAdmin,
     /// Current protocol state (Active or Paused).
     ProtocolState,
 }
@@ -75,17 +82,31 @@ impl PayoutRegistry {
     // Initialization
     // ─────────────────────────────────────────────────────────────────────────
 
-    pub fn init(env: Env, token: Address, protocol_admin: Address) {
+    pub fn init(env: Env, token: Address, admins: Vec<Address>, threshold: u32) {
         if env.storage().persistent().has(&DataKey::Token) {
             panic!("already initialized");
         }
+        
+        if admins.is_empty() {
+            panic!("admins list cannot be empty");
+        }
+        
+        if threshold == 0 || threshold > admins.len() as u32 {
+            panic!("invalid threshold");
+        }
+        
         env.storage().persistent().set(&DataKey::Token, &token);
-        env.storage().persistent().set(&DataKey::ProtocolAdmin, &protocol_admin);
+        
+        let multisig_admin = MultisigAdmin {
+            admins: admins.clone(),
+            threshold,
+        };
+        env.storage().persistent().set(&DataKey::MultisigAdmin, &multisig_admin);
         env.storage().persistent().set(&DataKey::ProtocolState, &ProtocolState::Active);
         
         env.events().publish(
             (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "Initialized")),
-            (token, protocol_admin),
+            (token, admins.len(), threshold),
         );
     }
 
@@ -96,14 +117,14 @@ impl PayoutRegistry {
             .expect("contract not initialized")
     }
 
-    /// Retrieve the protocol admin address.
+    /// Retrieve the multisig admin configuration.
     ///
     /// # Panics
     /// If the contract has not been initialized.
-    pub fn get_protocol_admin(env: Env) -> Address {
+    pub fn get_multisig_admin(env: Env) -> MultisigAdmin {
         env.storage()
             .persistent()
-            .get(&DataKey::ProtocolAdmin)
+            .get(&DataKey::MultisigAdmin)
             .expect("contract not initialized")
     }
 
@@ -127,6 +148,33 @@ impl PayoutRegistry {
         match state {
             ProtocolState::Active => {}, // Continue normally
             ProtocolState::Paused => panic!("protocol is paused"),
+        }
+    }
+
+    /// Verify that the caller has sufficient multisig authorization.
+    /// 
+    /// This function checks that at least `threshold` admins from the multisig
+    /// configuration have authorized the action. In Soroban, this is handled
+    /// natively by the Stellar network's account structure, but we need to
+    /// verify that the authorization payload contains the required signatures.
+    /// 
+    /// # Panics
+    /// If insufficient signatures are provided
+    fn verify_multisig_auth(env: &Env) {
+        let multisig_admin = Self::get_multisig_admin(env.clone());
+        
+        // Count how many of the authorized admins are actually signing
+        let mut auth_count = 0;
+        for i in 0..multisig_admin.admins.len() {
+            let admin = multisig_admin.admins.get(i).unwrap();
+            if admin.has_auth() {
+                auth_count += 1;
+            }
+        }
+        
+        // Verify we meet the threshold
+        if auth_count < multisig_admin.threshold {
+            panic!("insufficient multisig signatures: {} < {}", auth_count, multisig_admin.threshold);
         }
     }
 
@@ -582,23 +630,16 @@ impl PayoutRegistry {
     // Protocol Pause/Unpause
     // ─────────────────────────────────────────────────────────────────────────
 
-    /// Pause the protocol. Only the protocol admin can call this.
+    /// Pause the protocol. Requires multisig authorization from protocol admins.
     /// 
     /// When paused, all fund_org, allocate_payout, and claim_payout operations
     /// will be blocked with a "protocol is paused" error.
     /// 
     /// # Arguments
     /// * `env` - The contract environment
-    /// * `protocol_admin` - The address of the protocol admin (must match stored admin)
-    pub fn pause_protocol(env: Env, protocol_admin: Address) {
-        // Verify the caller is the protocol admin
-        let stored_admin = Self::get_protocol_admin(env.clone());
-        if stored_admin != protocol_admin {
-            panic!("unauthorized: not protocol admin");
-        }
-        
-        // Require authentication from the protocol admin
-        protocol_admin.require_auth();
+    pub fn pause_protocol(env: Env) {
+        // Verify multisig authorization
+        Self::verify_multisig_auth(&env);
         
         // Update the protocol state to paused
         env.storage().persistent().set(&DataKey::ProtocolState, &ProtocolState::Paused);
@@ -606,26 +647,19 @@ impl PayoutRegistry {
         // Emit pause event
         env.events().publish(
             (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "ProtocolPaused")),
-            protocol_admin,
+            env.ledger().timestamp(),
         );
     }
 
-    /// Unpause the protocol. Only the protocol admin can call this.
+    /// Unpause the protocol. Requires multisig authorization from protocol admins.
     /// 
     /// When unpaused, normal operations resume.
     /// 
     /// # Arguments
     /// * `env` - The contract environment
-    /// * `protocol_admin` - The address of the protocol admin (must match stored admin)
-    pub fn unpause_protocol(env: Env, protocol_admin: Address) {
-        // Verify the caller is the protocol admin
-        let stored_admin = Self::get_protocol_admin(env.clone());
-        if stored_admin != protocol_admin {
-            panic!("unauthorized: not protocol admin");
-        }
-        
-        // Require authentication from the protocol admin
-        protocol_admin.require_auth();
+    pub fn unpause_protocol(env: Env) {
+        // Verify multisig authorization
+        Self::verify_multisig_auth(&env);
         
         // Update the protocol state to active
         env.storage().persistent().set(&DataKey::ProtocolState, &ProtocolState::Active);
@@ -633,7 +667,7 @@ impl PayoutRegistry {
         // Emit unpause event
         env.events().publish(
             (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "ProtocolUnpaused")),
-            protocol_admin,
+            env.ledger().timestamp(),
         );
     }
 
@@ -643,26 +677,19 @@ impl PayoutRegistry {
 
     /// Upgrade the contract to a new WASM binary.
     /// 
-    /// This function can only be called by the protocol admin and allows for
+    /// This function requires multisig authorization from protocol admins and allows for
     /// upgrading the contract code while preserving all contract state.
     /// 
     /// # Arguments
     /// * `env` - The contract environment
-    /// * `protocol_admin` - The address of the protocol admin (must match stored admin)
     /// * `new_wasm_hash` - The 32-byte hash of the new WASM binary
     /// 
     /// # Panics
-    /// * If the caller is not the protocol admin
+    /// * If insufficient multisig signatures are provided
     /// * If the WASM hash is invalid
-    pub fn upgrade(env: Env, protocol_admin: Address, new_wasm_hash: BytesN<32>) {
-        // Verify the caller is the protocol admin
-        let stored_admin = Self::get_protocol_admin(env.clone());
-        if stored_admin != protocol_admin {
-            panic!("unauthorized: not protocol admin");
-        }
-        
-        // Require authentication from the protocol admin
-        protocol_admin.require_auth();
+    pub fn upgrade(env: Env, new_wasm_hash: BytesN<32>) {
+        // Verify multisig authorization
+        Self::verify_multisig_auth(&env);
         
         // Perform the upgrade
         env.deployer().update_current_contract_wasm(new_wasm_hash.clone());
@@ -670,7 +697,7 @@ impl PayoutRegistry {
         // Emit upgrade event
         env.events().publish(
             (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "ContractUpgraded")),
-            (protocol_admin, new_wasm_hash),
+            (new_wasm_hash, env.ledger().timestamp()),
         );
     }
 }
