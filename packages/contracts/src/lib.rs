@@ -67,6 +67,8 @@ pub enum DataKey {
     MultisigAdmin,
     /// Current protocol state (Active or Paused).
     ProtocolState,
+    /// Pending admin address proposed via propose_admin (two-step transfer).
+    PendingAdmin,
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -667,6 +669,61 @@ impl PayoutRegistry {
         env.events().publish(
             (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "ProtocolUnpaused")),
             env.ledger().timestamp(),
+        );
+    }
+
+    // ─────────────────────────────────────────────────────────────────────────
+    // Protocol Admin Rotation (two-step ownership transfer)
+    // ─────────────────────────────────────────────────────────────────────────
+
+    /// Step 1 of admin transfer: the current multisig admin proposes a new admin.
+    ///
+    /// The new admin is stored as `PendingAdmin` and must call `accept_admin` to
+    /// complete the transfer. This prevents accidentally transferring ownership to
+    /// an invalid or burned address.
+    ///
+    /// # Panics
+    /// * If multisig authorization is insufficient.
+    pub fn propose_admin(env: Env, new_admin: Address) {
+        Self::verify_multisig_auth(&env);
+        env.storage()
+            .persistent()
+            .set(&DataKey::PendingAdmin, &new_admin);
+        env.events().publish(
+            (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "AdminProposed")),
+            new_admin,
+        );
+    }
+
+    /// Step 2 of admin transfer: the proposed new admin accepts ownership.
+    ///
+    /// Replaces the multisig admin list with a single-member list containing
+    /// `new_admin` and clears the pending admin slot.
+    ///
+    /// # Panics
+    /// * If there is no pending admin proposal.
+    /// * If the caller is not the pending admin.
+    pub fn accept_admin(env: Env, new_admin: Address) {
+        new_admin.require_auth();
+        let pending: Address = env
+            .storage()
+            .persistent()
+            .get(&DataKey::PendingAdmin)
+            .expect("no pending admin proposal");
+        if pending != new_admin {
+            panic!("caller is not the pending admin");
+        }
+        // Build a new single-member multisig with threshold 1
+        let mut admins = Vec::new(&env);
+        admins.push_back(new_admin.clone());
+        let multisig_admin = MultisigAdmin { admins, threshold: 1 };
+        env.storage()
+            .persistent()
+            .set(&DataKey::MultisigAdmin, &multisig_admin);
+        env.storage().persistent().remove(&DataKey::PendingAdmin);
+        env.events().publish(
+            (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "admin_transferred")),
+            new_admin,
         );
     }
 
