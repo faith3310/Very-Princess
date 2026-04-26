@@ -13,6 +13,7 @@ import { PayoutCard } from "@/components/PayoutCard";
 import { FundOrgModal } from "@/components/FundOrgModal";
 import { AllocatePayoutModal } from "@/components/AllocatePayoutModal";
 import { WebhookSettings } from "@/components/WebhookSettings";
+import { ApiKeySettings } from "@/components/ApiKeySettings";
 import { useFreighter } from "@/hooks/useFreighter";
 import {
   readOrganization,
@@ -71,6 +72,7 @@ function DashboardPageInner() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [, startTransition] = useTransition();
 
   // ── Handlers ──────────────────────────────────────────────────────────────
 
@@ -369,8 +371,11 @@ function DashboardPageInner() {
                   )}
                 </>
               ) : (
-                <WebhookSettings orgId={organization.id} publicKey={publicKey || ""} />
-              )
+                <div className="space-y-8">
+                  <ApiKeySettings orgId={organization.id} publicKey={publicKey || ""} />
+                  <WebhookSettings orgId={organization.id} publicKey={publicKey || ""} />
+                </div>
+              )}
             )}
           </>
         )}
@@ -379,7 +384,6 @@ function DashboardPageInner() {
       {showFundModal && organization && (
         <FundOrgModal
           orgId={organization.id}
-          orgName={organization.name}
           onClose={() => setShowFundModal(false)}
           onSuccess={() => {
             setShowFundModal(false);

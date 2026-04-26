@@ -34,6 +34,7 @@ import { eventsRoutes } from "./routes/events.js";
 import { organizationRoutes } from "./routes/organization.js";
 import { authRoutes } from "./routes/auth.js";
 import { webhookRoutes } from "./routes/webhook.js";
+import { apiKeyRoutes } from "./routes/apiKeys.js";
 import { indexerService } from "./services/indexerService.js";
 import { configureTRPC } from "./trpc/server.js";
 
@@ -102,6 +103,7 @@ await server.register(statsRoutes, { prefix: "/api/stats" });
 await server.register(eventsRoutes, { prefix: "/api/events" });
 await server.register(organizationRoutes, { prefix: "/api/org" });
 await server.register(webhookRoutes, { prefix: "/api/org/:orgId/webhook" });
+await server.register(apiKeyRoutes, { prefix: "/api/org" });
 
 // Health check — used by CI, load balancers, and monitoring.
 server.get("/health", async () => ({
