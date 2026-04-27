@@ -17,6 +17,7 @@ import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { stellarService } from "../services/stellarService.js";
 import { safeGet, safeSet } from "../services/cache.js";
+import { apiKeyAuthPlugin } from "../plugins/apiKeyAuth.js";
 
 // ─── Validation Schemas ──────────────────────────────────────────────────────
 
@@ -43,6 +44,7 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
   fastify.get<{ Params: z.infer<typeof OrgIdParam> }>(
     "/:id",
     {
+      preHandler: apiKeyAuthPlugin,
       schema: {
         description: "Get organization details directly from Soroban contract",
         tags: ["Organizations"],

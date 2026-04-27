@@ -1,15 +1,9 @@
 import { organizationRepository } from "../repositories/OrganizationRepository.js";
 import { stellarService } from "../services/stellarService.js";
 import { redis } from "../services/cache.js";
+import type { PaginatedOrgsResponse } from "@very-princess/types";
 
-export interface PaginatedOrgsResponse {
-  data: { id: string; name: string; admin: string; publicBudget?: string }[];
-  meta: {
-    totalPages: number;
-    currentPage: number;
-    totalCount: number;
-  };
-}
+export type { PaginatedOrgsResponse };
 
 export class OrganizationService {
   async getOrganizations(page: number, limit: number, search?: string): Promise<PaginatedOrgsResponse> {
