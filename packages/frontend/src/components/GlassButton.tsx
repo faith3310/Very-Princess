@@ -12,6 +12,7 @@ const variantStyles: Record<"primary" | "secondary", string> = {
     "border border-white/15 bg-white/10 text-white/80 hover:bg-white/15 hover:text-white",
 };
 
+
 type GlassButtonProps =
   | (AnchorHTMLAttributes<HTMLAnchorElement> & {
       variant?: "primary" | "secondary";
