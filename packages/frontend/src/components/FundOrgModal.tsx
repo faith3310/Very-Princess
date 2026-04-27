@@ -15,7 +15,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useFreighter } from "@/hooks/useFreighter";
+import { useUnifiedWallet } from "@/hooks/useUnifiedWallet";
 import {
   buildFundOrgTransaction,
   submitSignedTransaction,
@@ -35,7 +35,7 @@ interface FundOrgModalProps {
 // ── Component ─────────────────────────────────────────────────────────────────
 
 export function FundOrgModal({ orgId, onClose, onSuccess }: FundOrgModalProps) {
-  const { isConnected, publicKey, signTransaction } = useFreighter();
+  const { isConnected, publicKey, signTransaction } = useUnifiedWallet();
 
   const [amount, setAmount] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
