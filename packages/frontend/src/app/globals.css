@@ -72,6 +72,17 @@
     @apply rounded-2xl border border-white/[0.08] bg-white/[0.04] backdrop-blur-sm;
   }
 
+  .glass-panel {
+    @apply rounded-2xl border border-white/[0.20] bg-white/[0.10] backdrop-blur-md;
+  }
+
+  @supports not (backdrop-filter: blur(0)) {
+    .glass-card,
+    .glass-panel {
+      background-color: rgba(255, 255, 255, 0.14);
+    }
+  }
+
   /* Gradient text utility */
   .gradient-text {
     @apply bg-gradient-to-r from-stellar-purple to-stellar-teal bg-clip-text text-transparent;

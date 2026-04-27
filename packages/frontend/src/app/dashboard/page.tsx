@@ -236,11 +236,10 @@ function DashboardContent() {
               <div className="grid grid-cols-1 gap-6 md:grid-cols-2 lg:grid-cols-3">
                 {balances.map((balance) => (
                   <PayoutCard
-                    key={balance.maintainer}
+                    key={balance.address}
                     balance={balance}
-                    isClaiming={claimingAddress === balance.maintainer}
-                    onClaim={() => handleClaim(balance.maintainer)}
-                    canClaim={publicKey === balance.maintainer}
+                    isClaiming={claimingAddress === balance.address}
+                    onClaim={() => handleClaim(balance.address)}
                   />
                 ))}
               </div>
@@ -258,7 +257,6 @@ function DashboardContent() {
       {showFundModal && organization && (
         <FundOrgModal
           orgId={organization.id}
-          orgName={organization.name}
           onClose={() => setShowFundModal(false)}
           onSuccess={() => {
             setShowFundModal(false);

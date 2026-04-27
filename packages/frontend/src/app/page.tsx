@@ -12,7 +12,8 @@
  */
 
 import type { Metadata } from "next";
-import Link from "next/link";
+import { GlassPanel } from "@/components/GlassPanel";
+import { PrimaryButton, SecondaryButton } from "@/components/GlassButton";
 import { WalletButton } from "@/components/WalletButton";
 
 export const metadata: Metadata = {
@@ -115,40 +116,36 @@ export default function HomePage() {
 
           {/* CTAs */}
           <div className="flex flex-col items-center gap-4 sm:flex-row sm:justify-center">
-            <Link
-              href="/dashboard"
-              id="go-to-dashboard-btn"
-              className="rounded-lg bg-gradient-to-r from-stellar-purple to-brand-500 px-8 py-3.5 text-sm font-semibold text-white shadow-lg shadow-stellar-purple/30 transition-all duration-200 hover:brightness-110 hover:shadow-stellar-purple/50"
-            >
+            <PrimaryButton href="/dashboard" id="go-to-dashboard-btn" className="px-8 py-3.5">
               Open Dashboard →
-            </Link>
-            <a
+            </PrimaryButton>
+            <SecondaryButton
               href="https://github.com/very-princess"
               target="_blank"
               rel="noopener noreferrer"
               id="view-github-btn"
-              className="rounded-lg border border-white/15 bg-white/5 px-8 py-3.5 text-sm font-semibold text-white/80 transition-all duration-200 hover:border-white/30 hover:bg-white/10 hover:text-white"
+              className="px-8 py-3.5"
             >
               View on GitHub
-            </a>
+            </SecondaryButton>
           </div>
         </div>
 
         {/* ── Feature Grid ────────────────────────────────────────────────── */}
         <div className="mt-24 grid max-w-5xl grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
           {features.map((feature) => (
-            <div
+            <GlassPanel
               key={feature.title}
-              className="glass-card p-6 text-left transition-all duration-300 hover:border-stellar-purple/20"
+              className="p-6 text-left transition-all duration-300 hover:border-stellar-purple/20"
             >
               <div className="mb-3 text-2xl">{feature.icon}</div>
               <h3 className="mb-2 text-sm font-semibold text-white">
                 {feature.title}
               </h3>
-              <p className="text-sm leading-relaxed text-white/50">
+              <p className="text-sm leading-relaxed text-white/60">
                 {feature.description}
               </p>
-            </div>
+            </GlassPanel>
           ))}
         </div>
       </main>
