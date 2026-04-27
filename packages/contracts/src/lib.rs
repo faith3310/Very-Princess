@@ -537,6 +537,7 @@ impl PayoutRegistry {
 
         env.storage()
             .persistent()
+            .set(&budget_key, &(current_budget.checked_sub(amount).expect("budget underflow"));
             .set(&budget_key, &(current_budget - amount));
         env.storage()
             .persistent()
@@ -623,6 +624,7 @@ impl PayoutRegistry {
         // Deduct total from org budget in one write
         env.storage()
             .persistent()
+            .set(&budget_key, &(current_budget.checked_sub(total).expect("budget underflow")));
             .set(&budget_key, &(current_budget - total));
         env.storage()
             .persistent()
@@ -639,6 +641,7 @@ impl PayoutRegistry {
                 .unwrap_or(0_i128);
             env.storage()
                 .persistent()
+                .set(&balance_key, &(current_balance.checked_add(entry.amount).expect("balance overflow")));
                 .set(&balance_key, &(current_balance + entry.amount));
             env.storage()
                 .persistent()
