@@ -1,17 +1,14 @@
 /**
  * @file layout.tsx
  * @description Root layout for the very-princess Next.js application.
- *
- * This layout wraps every page with:
- *  - Google Fonts (Inter + JetBrains Mono)
- *  - Global Tailwind base styles
- *  - A consistent dark-space background
- *  - SEO meta tags
+ * 
+ * This is a minimal root layout that delegates to the locale-specific layouts.
  */
 
 import type { Metadata } from "next";
 import { Inter, JetBrains_Mono } from "next/font/google";
 import { Toaster } from "sonner";
+import { TRPCProvider } from "../trpc/provider";
 import "./globals.css";
 
 // ── Font Loading ──────────────────────────────────────────────────────────────
@@ -71,7 +68,9 @@ export default function RootLayout({
           className="pointer-events-none fixed inset-0 bg-hero-pattern"
         />
         {/* Page content */}
-        <div className="relative">{children}</div>
+        <div className="relative">
+          <TRPCProvider>{children}</TRPCProvider>
+        </div>
         
         {/* Toast notifications */}
         <Toaster
