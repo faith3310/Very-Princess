@@ -5,6 +5,7 @@
 
 "use client";
 
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useState, useEffect, Suspense, useOptimistic, useTransition } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
@@ -105,7 +106,7 @@ function DashboardPageInner() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [orgIdInput]);
 
   /** Auto-lookup when ?org= param is present in the URL. */
   useEffect(() => {

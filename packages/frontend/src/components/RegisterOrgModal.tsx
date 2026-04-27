@@ -8,6 +8,7 @@
 import { useState } from "react";
 import { registerOrganization } from "@/lib/api";
 import { useFreighter } from "@/hooks/useFreighter";
+import { GlassPanel } from "@/components/GlassPanel";
 
 interface RegisterOrgModalProps {
   onClose: () => void;
@@ -66,7 +67,7 @@ export function RegisterOrgModal({ onClose, onSuccess }: RegisterOrgModalProps) 
       className="fixed inset-0 z-[100] flex items-center justify-center bg-stellar-blue/80 p-4 backdrop-blur-md"
       onClick={(e) => { if (e.target === e.currentTarget && !isSubmitting) onClose(); }}
     >
-      <div className="relative w-full max-w-md overflow-hidden rounded-2xl border border-white/10 bg-white/5 p-8 shadow-2xl backdrop-blur-xl">
+      <GlassPanel className="relative w-full max-w-md overflow-hidden p-8 shadow-2xl backdrop-blur-xl border-white/10 bg-white/5">
         <div className="pointer-events-none absolute -left-24 -top-24 h-48 w-48 rounded-full bg-stellar-purple/20 blur-[80px]" />
         <div className="pointer-events-none absolute -bottom-24 -right-24 h-48 w-48 rounded-full bg-stellar-teal/20 blur-[80px]" />
 
@@ -150,7 +151,7 @@ export function RegisterOrgModal({ onClose, onSuccess }: RegisterOrgModalProps) 
             </button>
           </form>
         </div>
-      </div>
+      </GlassPanel>
     </div>
   );
 }
