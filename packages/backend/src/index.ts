@@ -38,6 +38,7 @@ import { authRoutes } from "./routes/auth.js";
 import { webhookRoutes } from "./routes/webhook.js";
 import { apiKeyRoutes } from "./routes/apiKeys.js";
 import { indexerService } from "./services/indexerService.js";
+import { notificationController } from "./controllers/notificationController.js";
 import { configureTRPC } from "./trpc/server.js";
 
 // Sentry initialization
@@ -158,6 +159,11 @@ await server.register(eventsRoutes, { prefix: "/api/events" });
 await server.register(organizationRoutes, { prefix: "/api/org" });
 await server.register(webhookRoutes, { prefix: "/api/org/:orgId/webhook" });
 await server.register(apiKeyRoutes, { prefix: "/api/org" });
+
+// ─── Notification Routes ──────────────────────────────────────────────────────
+server.post("/api/v1/notifications/preferences", notificationController.saveEmailPreference);
+server.delete("/api/v1/notifications/preferences", notificationController.deleteEmailPreference);
+server.get("/api/v1/notifications/unsubscribe", notificationController.unsubscribe);
 
 // Health check — used by CI, load balancers, and monitoring.
 server.get("/health", async () => ({
