@@ -38,6 +38,22 @@ import { apiKeyRoutes } from "./routes/apiKeys.js";
 import { indexerService } from "./services/indexerService.js";
 import { configureTRPC } from "./trpc/server.js";
 
+// Sentry initialization
+import * as Sentry from "@sentry/node";
+import { nodeProfilingIntegration } from "@sentry/profiling-node";
+
+// Initialize Sentry only in production and when DSN is available
+if (process.env.NODE_ENV === "production" && process.env.SENTRY_DSN) {
+  Sentry.init({
+    dsn: process.env.SENTRY_DSN,
+    integrations: [
+      nodeProfilingIntegration(),
+    ],
+    tracesSampleRate: 1.0,
+    profilesSampleRate: 1.0,
+  });
+}
+
 // ─── Server Setup ─────────────────────────────────────────────────────────────
 
 const server = Fastify({
