@@ -16,10 +16,17 @@
 import type { FastifyPluginAsync } from "fastify";
 import { z } from "zod";
 import { stellarService } from "../services/stellarService.js";
+import { organizationService } from "../services/OrganizationService.js";
 import { safeGet, safeSet } from "../services/cache.js";
 import { apiKeyAuthPlugin } from "../plugins/apiKeyAuth.js";
 
 // ─── Validation Schemas ──────────────────────────────────────────────────────
+
+const UploadMetadataSchema = z.object({
+  name: z.string().min(1).max(100),
+  description: z.string().min(1).max(2000),
+  logoBase64: z.string().optional(),
+});
 
 /** Validation for the GET /:id route parameter. */
 const OrgIdParam = z.object({
@@ -131,6 +138,42 @@ export const organizationRoutes: FastifyPluginAsync = async (fastify) => {
           error: "Failed to fetch organization details",
           message: "Unable to query the Soroban contract. Please try again later.",
         });
+      }
+    }
+  );
+
+  /**
+   * POST /upload-metadata
+   * Uploads organization metadata to IPFS via Pinata.
+   * Returns the CID to the frontend for Soroban transaction construction.
+   */
+  fastify.post<{ Body: z.infer<typeof UploadMetadataSchema> }>(
+    "/upload-metadata",
+    {
+      preHandler: apiKeyAuthPlugin,
+      schema: {
+        description: "Upload organization metadata to IPFS",
+        tags: ["Organizations"],
+        body: {
+          type: "object",
+          properties: {
+            name: { type: "string" },
+            description: { type: "string" },
+            logoBase64: { type: "string" },
+          },
+          required: ["name", "description"],
+        },
+      },
+    },
+    async (request, reply) => {
+      const { name, description, logoBase64 } = request.body;
+
+      try {
+        const cid = await organizationService.uploadMetadata(name, description, logoBase64);
+        return reply.send({ cid });
+      } catch (error) {
+        fastify.log.error("IPFS upload failed:", error);
+        return reply.status(500).send({ error: "Failed to upload metadata to IPFS" });
       }
     }
   );

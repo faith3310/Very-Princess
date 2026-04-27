@@ -2,6 +2,7 @@ import { organizationRepository } from "../repositories/OrganizationRepository.j
 import { stellarService } from "../services/stellarService.js";
 import { redis } from "../services/cache.js";
 import type { PaginatedOrgsResponse } from "@very-princess/types";
+import { ipfsService } from "./ipfsService.js";
 
 export type { PaginatedOrgsResponse };
 
@@ -90,6 +91,7 @@ export class OrganizationService {
       id: String(org["id"]),
       name: String(org["name"]),
       admin: String(org["admin"]),
+      metadataCid: org["metadata_cid"] ? String(org["metadata_cid"]) : undefined,
     };
   }
 
@@ -105,6 +107,17 @@ export class OrganizationService {
       budgetStroops: stroops.toString(),
       budgetXlm: xlm,
     };
+  }
+
+  /**
+   * Uploads organization metadata (logo and description) to IPFS.
+   */
+  async uploadMetadata(
+    name: string,
+    description: string,
+    logoBase64?: string
+  ): Promise<string> {
+    return ipfsService.uploadOrgMetadata(name, description, logoBase64);
   }
 }
 

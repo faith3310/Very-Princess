@@ -14,6 +14,7 @@ pub struct Organization {
     pub id: Symbol,
     pub name: String,
     pub admins: Vec<Address>,
+    pub metadata_cid: Option<String>,
 }
 
 #[contracttype]
@@ -238,6 +239,7 @@ impl PayoutRegistry {
             id: id.clone(),
             name,
             admins: admins.clone(),
+            metadata_cid: None,
         };
         env.storage().persistent().set(&org_key, &org);
         env.storage().persistent().extend_ttl(&org_key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
@@ -280,6 +282,38 @@ impl PayoutRegistry {
             .persistent()
             .get(&DataKey::Organization(id))
             .expect("organization not found")
+    }
+
+    /// Update the IPFS CID for an organization's metadata (Logo/Description).
+    /// Requires authorization from at least one organization admin.
+    pub fn update_org_metadata(env: Env, id: Symbol, metadata_cid: String) {
+        let org_key = DataKey::Organization(id.clone());
+        let mut org: Organization = env.storage().persistent()
+            .get(&org_key)
+            .expect("organization not found");
+
+        // Authorization: Check if the caller is one of the registered admins
+        let mut is_authorized = false;
+        for i in 0..org.admins.len() {
+            let admin = org.admins.get(i).unwrap();
+            if admin.has_auth() {
+                is_authorized = true;
+                break;
+            }
+        }
+
+        if !is_authorized {
+            panic!("not authorized to update metadata");
+        }
+
+        org.metadata_cid = Some(metadata_cid.clone());
+        env.storage().persistent().set(&org_key, &org);
+        env.storage().persistent().extend_ttl(&org_key, PERSISTENT_LIFETIME_THRESHOLD, PERSISTENT_BUMP_AMOUNT);
+
+        env.events().publish(
+            (Symbol::new(&env, "VeryPrincess"), Symbol::new(&env, "OrgMetadataUpdated")),
+            (id, metadata_cid),
+        );
     }
 
     pub fn fund_org(env: Env, org_id: Symbol, from: Address, amount: i128) {
@@ -537,7 +571,6 @@ impl PayoutRegistry {
 
         env.storage()
             .persistent()
-            .set(&budget_key, &(current_budget.checked_sub(amount).expect("budget underflow"));
             .set(&budget_key, &(current_budget - amount));
         env.storage()
             .persistent()
@@ -624,7 +657,6 @@ impl PayoutRegistry {
         // Deduct total from org budget in one write
         env.storage()
             .persistent()
-            .set(&budget_key, &(current_budget.checked_sub(total).expect("budget underflow")));
             .set(&budget_key, &(current_budget - total));
         env.storage()
             .persistent()
@@ -641,7 +673,6 @@ impl PayoutRegistry {
                 .unwrap_or(0_i128);
             env.storage()
                 .persistent()
-                .set(&balance_key, &(current_balance.checked_add(entry.amount).expect("balance overflow")));
                 .set(&balance_key, &(current_balance + entry.amount));
             env.storage()
                 .persistent()
