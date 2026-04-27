@@ -5,7 +5,7 @@
 
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
+import { useState, useEffect, useCallback, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { WalletButton } from "@/components/WalletButton";
@@ -41,7 +41,7 @@ function DashboardContent() {
   // ── Handlers ──────────────────────────────────────────────────────────────
 
   /** Fetch org data, budget, and all maintainer balances from Soroban RPC. */
-  const handleLookupOrg = async (id?: string) => {
+  const handleLookupOrg = useCallback(async (id?: string) => {
     const targetId = id || orgIdInput.trim();
     if (!targetId) return;
     
@@ -72,7 +72,7 @@ function DashboardContent() {
     } finally {
       setIsLoading(false);
     }
-  };
+  }, [orgIdInput]);
 
   // Auto-lookup if org ID is in search params
   useEffect(() => {
@@ -81,7 +81,7 @@ function DashboardContent() {
       setOrgIdInput(orgId);
       void handleLookupOrg(orgId);
     }
-  }, [searchParams]);
+  }, [searchParams, handleLookupOrg]);
 
   /** Prepare, sign, and submit the claim_payout transaction. */
   const handleClaim = async (address: string) => {

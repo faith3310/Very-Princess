@@ -12,6 +12,7 @@
  */
 
 import type { Metadata } from "next";
+import Link from "next/link";
 import { GlassPanel } from "@/components/GlassPanel";
 import { PrimaryButton, SecondaryButton } from "@/components/GlassButton";
 import { WalletButton } from "@/components/WalletButton";
