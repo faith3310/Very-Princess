@@ -1,5 +1,5 @@
 import { prisma } from "../services/db.js";
-import { crypto } from "crypto";
+import { randomBytes } from "node:crypto";
 
 export class WebhookRepository {
   async getConfig(organizationId: string) {
@@ -14,7 +14,7 @@ export class WebhookRepository {
     });
   }
 
-  async upsertConfig(organizationId: string, url: string) {
+  async upsertConfig(organizationId: string, url: string, secret?: string) {
     const existing = await prisma.webhookConfig.findUnique({
       where: { organizationId },
     });
@@ -22,15 +22,15 @@ export class WebhookRepository {
     if (existing) {
       return prisma.webhookConfig.update({
         where: { organizationId },
-        data: { url },
+        data: { url, ...(secret && { secret }) },
       });
     } else {
-      const secret = `whsec_${crypto.randomBytes(24).toString("hex")}`;
+      const webhookSecret = secret || `whsec_${crypto.randomBytes(24).toString("hex")}`;
       return prisma.webhookConfig.create({
         data: {
           organizationId,
           url,
-          secret,
+          secret: webhookSecret,
         },
       });
     }
