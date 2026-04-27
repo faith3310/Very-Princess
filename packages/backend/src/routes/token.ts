@@ -27,7 +27,44 @@ export const tokenController = {
 };
 
 export async function tokenRoutes(fastify: FastifyInstance) {
-  fastify.get("/verify/:address", async (request, reply) => {
+  fastify.get("/verify/:address", {
+    schema: {
+      description: "Verify if a token contract address is verified and check its risk level",
+      tags: ["Tokens"],
+      params: {
+        type: "object",
+        properties: {
+          address: { 
+            type: "string", 
+            description: "Token contract address to verify" 
+          },
+        },
+        required: ["address"],
+      },
+      response: {
+        200: {
+          type: "object",
+          properties: {
+            isVerified: { 
+              type: "boolean", 
+              description: "Whether the token contract is verified" 
+            },
+            riskLevel: { 
+              type: "string", 
+              enum: ["LOW", "HIGH"],
+              description: "Risk level assessment of the token" 
+            },
+          },
+        },
+        400: {
+          type: "object",
+          properties: {
+            error: { type: "string" },
+          },
+        },
+      },
+    },
+  }, async (request, reply) => {
     const { address } = request.params as { address: string };
     
     if (!address) {

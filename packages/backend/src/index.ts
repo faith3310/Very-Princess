@@ -24,6 +24,8 @@ import { profileRoutes } from "./routes/profile.js";
 
 import cors from "@fastify/cors";
 import helmet from "@fastify/helmet";
+import swagger from "@fastify/swagger";
+import swaggerUi from "@fastify/swagger-ui";
 import { SERVER_HOST, SERVER_PORT } from "./config/env.js";
 import { contractRoutes } from "./routes/contract.js";
 import rateLimit from "@fastify/rate-limit";
@@ -102,9 +104,45 @@ await server.register(cors, {
 
 await server.register(errorHandler);
 
-// ─── tRPC Configuration ────────────────────────────────────────────────────────
+// ─── Swagger Documentation ─────────────────────────────────────────────────────
 
-await configureTRPC(server);
+await server.register(swagger, {
+  swagger: {
+    info: {
+      title: 'Very Princess API',
+      description: 'Multi-organization maintenance payout infrastructure on the Stellar network',
+      version: '0.1.0',
+    },
+    host: `${SERVER_HOST}:${SERVER_PORT}`,
+    schemes: ['http', 'https'],
+    consumes: ['application/json'],
+    produces: ['application/json'],
+    tags: [
+      { name: 'Organizations', description: 'Organization management endpoints' },
+      { name: 'Contracts', description: 'Smart contract interactions' },
+      { name: 'Profiles', description: 'User profile management' },
+      { name: 'Tokens', description: 'Token operations' },
+      { name: 'Auth', description: 'Authentication endpoints' },
+      { name: 'Stats', description: 'Statistics and analytics' },
+      { name: 'Events', description: 'Event tracking' },
+      { name: 'Webhooks', description: 'Webhook management' },
+    ],
+  },
+});
+
+await server.register(swaggerUi, {
+  routePrefix: '/api/docs',
+  uiConfig: {
+    docExpansion: 'list',
+    deepLinking: false,
+  },
+  uiHooks: {
+    onRequest: function (request, reply, next) { next() },
+    preHandler: function (request, reply, next) { next() },
+  },
+  staticCSP: true,
+  transformStaticCSP: (header) => header,
+});
 
 // ─── Route Registration ───────────────────────────────────────────────────────
 
