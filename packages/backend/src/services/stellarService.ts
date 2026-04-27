@@ -40,38 +40,11 @@ import {
 } from "../config/env.js";
 import { withRetry } from "../utils/retry.js";
 import { decodeI128ToBigInt, stroopsToXlm, decodeBase64Xdr } from "../utils/xdrDecoder.js";
+import type { AccountInfo, ContractCallResult, PayoutEvent, ProfileStats } from "@very-princess/types";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
 
-export interface AccountInfo {
-  id: string;
-  sequence: string;
-  balances: Horizon.HorizonApi.BalanceLine[];
-}
-
-export interface ContractCallResult {
-  success: boolean;
-  value: unknown;
-  transactionHash?: string;
-}
-
-// ── Add to Types section ──────────────────────────────────────────────────────
-
-export interface PayoutEvent {
-  orgId: string;
-  amountStroops: bigint;
-  ledger: number;
-  ledgerClosedAt: string;
-  txHash: string;
-}
-
-export interface ProfileStats {
-  address: string;
-  totalStroops: bigint;
-  totalXlm: string;
-  orgIds: string[];
-  payouts: PayoutEvent[];
-}
+export type { AccountInfo, ContractCallResult, PayoutEvent, ProfileStats };
 // ─── Service ─────────────────────────────────────────────────────────────────
 
 export class StellarService {

@@ -10,8 +10,7 @@ import Link from "next/link";
 import useSWR from "swr";
 import { WalletButton } from "@/components/WalletButton";
 import { useSSEWithSWR } from "@/hooks/useSSE";
-import { useClaimPayout } from "@/hooks/useClaimPayout";
-import { useWallet } from "@/hooks/useWallet";
+import { useUnifiedWallet } from "@/hooks/useUnifiedWallet";
 
 interface PendingPayout {
   orgId: string;
@@ -21,8 +20,8 @@ interface PendingPayout {
 }
 
 export default function PayoutsPage() {
-  const { isConnected, publicKey } = useWallet();
-  const { claimPayout, isClaiming } = useClaimPayout();
+  const { isConnected, publicKey, claimPayout, isSigning } = useUnifiedWallet();
+  const [isExporting, setIsExporting] = useState(false);
 
   // Enable SSE for real-time updates
   useSSEWithSWR();
@@ -56,6 +55,50 @@ export default function PayoutsPage() {
       await mutate();
     } catch (error) {
       console.error("Failed to claim payout:", error);
+    }
+  };
+
+  const handleExportData = async (format: 'csv' | 'json') => {
+    if (!publicKey) return;
+    
+    setIsExporting(true);
+    try {
+      const baseUrl = process.env.NEXT_PUBLIC_BACKEND_URL || "http://localhost:3001";
+      const url = new URL(`/api/export/payouts/${publicKey}`, baseUrl);
+      url.searchParams.set('type', format);
+      
+      const response = await fetch(url.toString());
+      if (!response.ok) {
+        throw new Error(`Export failed: ${response.statusText}`);
+      }
+      
+      // Get filename from Content-Disposition header or create default
+      const contentDisposition = response.headers.get('Content-Disposition');
+      let filename = `payout-history-${publicKey}-${new Date().toISOString().split('T')[0]}.${format}`;
+      
+      if (contentDisposition) {
+        const filenameMatch = contentDisposition.match(/filename="?([^"]+)"?/);
+        if (filenameMatch) {
+          filename = filenameMatch[1];
+        }
+      }
+      
+      // Create blob and download
+      const blob = await response.blob();
+      const downloadUrl = window.URL.createObjectURL(blob);
+      const link = document.createElement('a');
+      link.href = downloadUrl;
+      link.download = filename;
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+      window.URL.revokeObjectURL(downloadUrl);
+      
+    } catch (error) {
+      console.error("Export failed:", error);
+      alert(`Export failed: ${error instanceof Error ? error.message : 'Unknown error'}`);
+    } finally {
+      setIsExporting(false);
     }
   };
 
@@ -111,10 +154,54 @@ export default function PayoutsPage() {
 
       <main className="mx-auto w-full max-w-4xl flex-1 px-6 py-10">
         <div className="mb-8">
-          <h2 className="text-3xl font-bold text-white mb-2">Your Payouts</h2>
-          <p className="text-white/50">
-            Manage and claim your pending payouts from organizations you contribute to.
-          </p>
+          <div className="flex items-center justify-between mb-4">
+            <div>
+              <h2 className="text-3xl font-bold text-white mb-2">Your Payouts</h2>
+              <p className="text-white/50">
+                Manage and claim your pending payouts from organizations you contribute to.
+              </p>
+            </div>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => handleExportData('csv')}
+                disabled={isExporting}
+                className="rounded-lg bg-white/10 hover:bg-white/20 px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {isExporting ? (
+                  <>
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Export CSV
+                  </>
+                )}
+              </button>
+              <button
+                onClick={() => handleExportData('json')}
+                disabled={isExporting}
+                className="rounded-lg bg-white/10 hover:bg-white/20 px-4 py-2 text-sm font-medium text-white transition-colors disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
+              >
+                {isExporting ? (
+                  <>
+                    <div className="h-4 w-4 animate-spin rounded-full border-2 border-white/30 border-t-white"></div>
+                    Exporting...
+                  </>
+                ) : (
+                  <>
+                    <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M12 10v6m0 0l-3-3m3 3l3-3m2 8H7a2 2 0 01-2-2V5a2 2 0 012-2h5.586a1 1 0 01.707.293l5.414 5.414a1 1 0 01.293.707V19a2 2 0 01-2 2z" />
+                    </svg>
+                    Export JSON
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
         </div>
 
         {error && (
@@ -163,10 +250,10 @@ export default function PayoutsPage() {
                   </div>
                   <button
                     onClick={() => handleClaimPayout(payout.orgId)}
-                    disabled={isClaiming}
+                    disabled={isSigning}
                     className="rounded-lg bg-gradient-to-r from-stellar-purple to-brand-500 px-6 py-2.5 text-sm font-semibold text-white shadow-lg shadow-stellar-purple/20 transition-all hover:brightness-110 disabled:opacity-50 disabled:cursor-not-allowed"
                   >
-                    {isClaiming ? "Claiming..." : "Claim"}
+                    {isSigning ? "Claiming..." : "Claim"}
                   </button>
                 </div>
               </div>
