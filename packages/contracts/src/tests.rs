@@ -26,8 +26,16 @@ mod tests {
         let contract_id = env.register_contract(None, PayoutRegistry);
         let client = PayoutRegistryClient::new(&env, &contract_id);
 
-        let protocol_admin = Address::generate(&env);
-        client.init(&token_contract_id.address(), &protocol_admin);
+        // Create 3 protocol admins with threshold of 2 for multisig
+        let admin1 = Address::generate(&env);
+        let admin2 = Address::generate(&env);
+        let admin3 = Address::generate(&env);
+        let mut admins = Vec::new(&env);
+        admins.push_back(admin1.clone());
+        admins.push_back(admin2.clone());
+        admins.push_back(admin3.clone());
+        
+        client.init(&token_contract_id.address(), &admins, &2);
 
         Setup {
             env,
@@ -56,7 +64,9 @@ mod tests {
     fn test_init() {
         let Setup { env, client, .. } = setup();
         let additional_token = Address::generate(&env);
-        let result = client.try_init(&additional_token, &Address::generate(&env));
+        let mut admins = Vec::new(&env);
+        admins.push_back(Address::generate(&env));
+        let result = client.try_init(&additional_token, &admins, &1);
         assert!(result.is_err());
     }
 
@@ -366,5 +376,75 @@ mod tests {
 
         let result = client.try_add_admin(&org_sym, &Address::generate(&env));
         assert!(result.is_err()); // Limit is 10
+    }
+
+    // ── Multisig Protocol Admin Tests ───────────────────────────────────────────
+
+    #[test]
+    fn test_multisig_upgrade_with_three_keypairs() {
+        let env = Env::default();
+        let token_admin = Address::generate(&env);
+        let token_contract_id = env.register_stellar_asset_contract_v2(token_admin.clone());
+        let token_client = token::StellarAssetClient::new(&env, &token_contract_id.address());
+
+        let contract_id = env.register_contract(None, PayoutRegistry);
+        let client = PayoutRegistryClient::new(&env, &contract_id);
+
+        // Create 3 unique protocol admin keypairs
+        let admin1 = Address::generate(&env);
+        let admin2 = Address::generate(&env);
+        let admin3 = Address::generate(&env);
+        
+        let mut admins = Vec::new(&env);
+        admins.push_back(admin1.clone());
+        admins.push_back(admin2.clone());
+        admins.push_back(admin3.clone());
+        
+        // Initialize with threshold of 2 (requires 2-of-3 signatures)
+        client.init(&token_contract_id.address(), &admins, &2);
+
+        // Verify multisig configuration
+        let multisig_admin = client.get_multisig_admin();
+        assert_eq!(multisig_admin.admins.len(), 3);
+        assert_eq!(multisig_admin.threshold, 2);
+
+        // Test 1: Upgrade with only 1 signature should fail
+        env.set_auths(&[]);
+        env.mock_auths(&[(&admin1, &123)]);
+        
+        let new_wasm_hash = soroban_sdk::BytesN::from_array(&env, &[1; 32]);
+        let result = client.try_upgrade(&new_wasm_hash);
+        assert!(result.is_err());
+        assert_eq!(result.err().unwrap().to_string(), "ContractError(4)"); // insufficient multisig signatures
+
+        // Test 2: Upgrade with 2 signatures should succeed
+        env.set_auths(&[]);
+        env.mock_auths(&[(&admin1, &123), (&admin2, &456)]);
+        
+        let result = client.try_upgrade(&new_wasm_hash);
+        assert!(result.is_ok());
+
+        // Test 3: Pause with 2 signatures should succeed
+        env.set_auths(&[]);
+        env.mock_auths(&[(&admin2, &789), (&admin3, &101112)]);
+        
+        let result = client.try_pause_protocol();
+        assert!(result.is_ok());
+        assert_eq!(client.get_protocol_state(), crate::ProtocolState::Paused);
+
+        // Test 4: Unpause with only 1 signature should fail
+        env.set_auths(&[]);
+        env.mock_auths(&[(&admin1, &131415)]);
+        
+        let result = client.try_unpause_protocol();
+        assert!(result.is_err());
+
+        // Test 5: Unpause with 2 signatures should succeed
+        env.set_auths(&[]);
+        env.mock_auths(&[(&admin1, &161718), (&admin3, &192021)]);
+        
+        let result = client.try_unpause_protocol();
+        assert!(result.is_ok());
+        assert_eq!(client.get_protocol_state(), crate::ProtocolState::Active);
     }
 }
