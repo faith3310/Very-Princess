@@ -67,6 +67,18 @@
     "status": "Status",
     "actions": "Actions"
   },
+  "settings": {
+    "email_preferences": "Email Preferences",
+    "email_description": "Get notified instantly when an organization allocates funds to your wallet.",
+    "email_label": "Email Address",
+    "email_placeholder": "maintainer@example.com",
+    "save_email": "Save & Opt-in",
+    "saving": "Verifying & Saving...",
+    "remove_email": "Remove Email",
+    "verify_ownership": "Verification Required",
+    "verify_description": "To prevent spam, you must sign a message with your wallet to prove ownership before saving your email.",
+    "opted_in": "You are currently opted in to email notifications."
+  },
   "wallet": {
     "connect": "Connect Wallet",
     "connecting": "Connecting...",
