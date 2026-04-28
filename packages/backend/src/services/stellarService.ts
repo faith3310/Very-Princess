@@ -163,6 +163,7 @@ export class StellarService {
     admin: string;
     budgetStroops: string;
     budgetXlm: string;
+    metadataCid?: string;
   }> {
     // Get organization data from DataKey::Org(id)
     const orgResult = await this._simulateContractCall("get_org", [
@@ -182,6 +183,7 @@ export class StellarService {
       admin: orgData.admin as string,
       budgetStroops: budgetStroops.toString(),
       budgetXlm: (Number(budgetStroops) / 10_000_000).toFixed(7),
+      metadataCid: orgData.metadata_cid as string | undefined,
     };
   }
 

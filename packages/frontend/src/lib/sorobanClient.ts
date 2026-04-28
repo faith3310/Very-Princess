@@ -120,6 +120,7 @@ export async function readOrganization(orgId: string): Promise<Organization> {
     id: String(map["id"]),
     name: String(map["name"]),
     admin: String(map["admin"]),
+    metadataCid: map["metadata_cid"] ? String(map["metadata_cid"]) : undefined,
   };
 }
 
@@ -291,6 +292,44 @@ export async function buildAllocatePayoutTransaction(
         nativeToScVal(maintainerAddress, { type: "address" }),
         nativeToScVal(amountStroops, { type: "i128" }),
         nativeToScVal(0, { type: "u64" })
+      )
+    )
+    .setTimeout(60)
+    .build();
+
+  const simResult = await rpcServer.simulateTransaction(tx);
+  if (SorobanRpc.Api.isSimulationError(simResult)) {
+    throw new Error(`Simulation failed: ${simResult.error}`);
+  }
+
+  const preparedTx = SorobanRpc.assembleTransaction(tx, simResult).build();
+  return preparedTx.toXDR();
+}
+
+/**
+ * Build, simulate, and prepare an unsigned XDR for `update_org_metadata`.
+ * 
+ * @param adminAddress - The admin's public key.
+ * @param orgId - Organization ID.
+ * @param metadataCid - The new IPFS CID.
+ */
+export async function buildUpdateOrgMetadataTransaction(
+  adminAddress: string,
+  orgId: string,
+  metadataCid: string
+): Promise<string> {
+  const account = await loadAccount(adminAddress);
+  const contract = new Contract(CONTRACT_ID);
+
+  const tx = new TransactionBuilder(account, {
+    fee: BASE_FEE,
+    networkPassphrase: NETWORK_PASSPHRASE,
+  })
+    .addOperation(
+      // @ts-ignore
+      contract.call("update_org_metadata",
+        nativeToScVal(orgId, { type: "symbol" }),
+        nativeToScVal(metadataCid, { type: "string" })
       )
     )
     .setTimeout(60)
